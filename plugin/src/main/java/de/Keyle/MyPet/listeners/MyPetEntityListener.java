@@ -1,0 +1,666 @@
+/*
+ * This file is part of MyPet
+ *
+ * Copyright © 2011-2019 Keyle
+ * MyPet is licensed under the GNU Lesser General Public License.
+ *
+ * MyPet is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyPet is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package de.Keyle.MyPet.listeners;
+
+import net.kyori.adventure.text.format.NamedTextColor;
+
+import net.kyori.adventure.text.Component;
+
+import de.Keyle.MyPet.MyPetApi;
+import de.Keyle.MyPet.api.util.SchedulerManager;
+import de.Keyle.MyPet.api.Configuration;
+import de.Keyle.MyPet.api.Util;
+import de.Keyle.MyPet.api.WorldGroup;
+import de.Keyle.MyPet.api.entity.*;
+import de.Keyle.MyPet.api.entity.MyPet.PetState;
+import de.Keyle.MyPet.api.entity.skill.ranged.CraftMyPetProjectile;
+import de.Keyle.MyPet.api.entity.skill.ranged.EntityMyPetProjectile;
+import de.Keyle.MyPet.api.event.MyPetDamageEvent;
+import de.Keyle.MyPet.api.event.MyPetOnHitSkillEvent;
+import de.Keyle.MyPet.api.event.MyPetRemoveEvent;
+import de.Keyle.MyPet.api.player.ContributorCheck;
+import de.Keyle.MyPet.api.player.MyPetPlayer;
+import de.Keyle.MyPet.api.player.Permissions;
+import de.Keyle.MyPet.api.skill.MyPetExperience;
+import de.Keyle.MyPet.api.skill.OnDamageByEntitySkill;
+import de.Keyle.MyPet.api.skill.OnHitSkill;
+import de.Keyle.MyPet.api.skill.skills.Backpack;
+import de.Keyle.MyPet.api.skill.skills.Behavior;
+import de.Keyle.MyPet.api.skill.skills.Behavior.BehaviorMode;
+import de.Keyle.MyPet.api.skill.skilltree.Skill;
+import de.Keyle.MyPet.api.util.Colorizer;
+import de.Keyle.MyPet.api.util.ConfigItem;
+import de.Keyle.MyPet.api.util.EnumSelector;
+import de.Keyle.MyPet.api.util.inventory.CustomInventory;
+import de.Keyle.MyPet.api.util.locale.Translation;
+import de.Keyle.MyPet.commands.CommandInfo;
+import de.Keyle.MyPet.commands.CommandInfo.PetInfoDisplay;
+import de.Keyle.MyPet.skill.skills.BackpackImpl;
+import org.bukkit.Bukkit;
+
+import org.bukkit.Material;
+import org.bukkit.entity.*;
+import org.bukkit.event.EventHandler;
+import de.Keyle.MyPet.util.translation.PetDefaultNameResolver;
+import de.Keyle.MyPet.util.translation.VanillaTranslationLoader;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.*;
+import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.projectiles.ProjectileSource;
+import de.Keyle.MyPet.api.util.message.MessageRenderer;
+
+public class MyPetEntityListener implements Listener {
+
+    // JUMP was renamed to JUMP_BOOST in newer API versions
+    private static final PotionEffectType JUMP_EFFECT;
+    static {
+        PotionEffectType jump = PotionEffectType.getByName("JUMP_BOOST");
+        if (jump == null) {
+            jump = PotionEffectType.getByName("JUMP");
+        }
+        JUMP_EFFECT = jump;
+    }
+
+    boolean isSkillActive = false;
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMyPet(CreatureSpawnEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        if (event.getEntity() instanceof MyPetBukkitEntity) {
+            event.setCancelled(false);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onMyPet(EntityPortalEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        if (event.getEntity() instanceof MyPetBukkitEntity) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onMyPet(EntityInteractEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        if (event.getEntity() instanceof MyPetBukkitEntity) {
+            if (event.getBlock().getType() == EnumSelector.find(Material.class, "SOIL", "FARMLAND")) {
+                event.setCancelled(true);
+            } else if ("TURTLE_EGG".equals(event.getBlock().getType().name())) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onMyPet(EntityCombustByEntityEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        if (WorldGroup.getGroupByWorld(event.getEntity().getWorld()).isDisabled()) {
+            return;
+        }
+        if (event.getEntity() instanceof MyPetBukkitEntity) {
+            if (event.getCombuster() instanceof Player || (event.getCombuster() instanceof Projectile && ((Projectile) event.getCombuster()).getShooter() instanceof Player)) {
+                Player damager;
+                if (event.getCombuster() instanceof Projectile) {
+                    damager = (Player) ((Projectile) event.getCombuster()).getShooter();
+                } else {
+                    damager = (Player) event.getCombuster();
+                }
+
+                MyPet myPet = ((MyPetBukkitEntity) event.getEntity()).getMyPet();
+
+                if (myPet.getOwner().equals(damager) && !Configuration.Misc.OWNER_CAN_ATTACK_PET) {
+                    event.setCancelled(true);
+                } else if (!myPet.getOwner().equals(damager) && !MyPetApi.getHookHelper().canHurt(damager, myPet.getOwner().getPlayer(), true)) {
+                    event.setCancelled(true);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onMyPet(final EntityDamageByEntityEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        if (WorldGroup.getGroupByWorld(event.getEntity().getWorld()).isDisabled()) {
+            return;
+        }
+        if (event.getEntity() instanceof MyPetBukkitEntity) {
+            MyPetBukkitEntity craftMyPet = (MyPetBukkitEntity) event.getEntity();
+            MyPet myPet = craftMyPet.getMyPet();
+            if (event.getDamager() instanceof Player || (event.getDamager() instanceof Projectile && ((Projectile) event.getDamager()).getShooter() instanceof Player)) {
+                Player damager;
+                if (event.getDamager() instanceof Projectile) {
+                    damager = (Player) ((Projectile) event.getDamager()).getShooter();
+                } else {
+                    damager = (Player) event.getDamager();
+                }
+                ItemStack leashItem;
+                if (MyPetApi.getCompatUtil().compareWithMinecraftVersion("1.9") >= 0) {
+                    leashItem = damager.getEquipment().getItemInMainHand();
+                } else {
+                    leashItem = damager.getItemInHand();
+                }
+                ConfigItem neededLeashItem = MyPetApi.getMyPetInfo().getLeashItem(myPet.getPetType());
+                if (neededLeashItem == null || neededLeashItem.compare(leashItem)) {
+                    boolean infoShown = false;
+                    if (CommandInfo.canSee(PetInfoDisplay.Name.adminOnly, damager, myPet)) {
+                        MessageRenderer.send(damager, "<aqua>" + myPet.getPetName() + "<reset>" + ":");
+                        infoShown = true;
+                    }
+                    if (CommandInfo.canSee(PetInfoDisplay.Owner.adminOnly, damager, myPet) && myPet.getOwner().getPlayer() != damager) {
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Owner", damager) + ": " + myPet.getOwner().getName());
+                        infoShown = true;
+                    }
+                    if (CommandInfo.canSee(PetInfoDisplay.HP.adminOnly, damager, myPet)) {
+                        String msg;
+                        double health = myPet.getHealth();
+                        double maxHealth = myPet.getMaxHealth();
+                        if (health > maxHealth / 3 * 2) {
+                            msg = "" + "<green>";
+                        } else if (health > maxHealth / 3) {
+                            msg = "" + "<yellow>";
+                        } else {
+                            msg = "" + "<red>";
+                        }
+                        msg += String.format("%1.2f", health) + "<white>" + "/" + String.format("%1.2f", maxHealth);
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.HP", damager) + ": " + msg);
+                        infoShown = true;
+                    }
+                    if (myPet.getStatus() == PetState.Dead && CommandInfo.canSee(PetInfoDisplay.RespawnTime.adminOnly, damager, myPet)) {
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Respawntime", damager) + ": " + myPet.getRespawnTime());
+                        infoShown = true;
+                    }
+                    if (myPet.getDamage() > 0 && CommandInfo.canSee(PetInfoDisplay.Damage.adminOnly, damager, myPet)) {
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Damage", damager) + ": " + String.format("%1.2f", myPet.getDamage()));
+                        infoShown = true;
+                    }
+                    if (myPet.getRangedDamage() > 0 && CommandInfo.canSee(PetInfoDisplay.RangedDamage.adminOnly, damager, myPet)) {
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.RangedDamage", damager) + ": " + String.format("%1.2f", myPet.getRangedDamage()));
+                        infoShown = true;
+                    }
+                    if (Configuration.HungerSystem.USE_HUNGER_SYSTEM && CommandInfo.canSee(PetInfoDisplay.Hunger.adminOnly, damager, myPet)) {
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Hunger", damager) + ": " + Math.round(myPet.getSaturation()));
+
+                        boolean comma = false;
+                        Component message = MessageRenderer.parse("   " + Translation.getString("Name.Food", myPet.getOwner()) + ": ", damager);
+                        for (ConfigItem material : MyPetApi.getMyPetInfo().getFood(myPet.getPetType())) {
+                            ItemStack is = material.getItem();
+                            if (is == null || is.getType() == Material.AIR) {
+                                continue;
+                            }
+                            if (comma) {
+                                message = message.append(Component.text(", "));
+                            }
+
+                            ItemMeta meta = is.getItemMeta();
+                            Component itemPart = meta != null ? meta.displayName() : null;
+                            if (itemPart == null) {
+                                try {
+                                    itemPart = Component.translatable(MyPetApi.getPlatformHelper().getVanillaName(is))
+                                            .color(NamedTextColor.GOLD);
+                                } catch (Exception e) {
+                                    MyPetApi.getLogger().warning("A food item caused an error. If you think this is a bug please report it to the MyPet developer.");
+                                    MyPetApi.getLogger().warning("" + is);
+                                    e.printStackTrace();
+                                    continue;
+                                }
+                            }
+                            message = message.append(itemPart);
+                            comma = true;
+                        }
+                        damager.sendMessage(message);
+
+                        infoShown = true;
+                    }
+                    if (myPet.getSkills().has(Behavior.class) && CommandInfo.canSee(PetInfoDisplay.Behavior.adminOnly, damager, myPet)) {
+                        Behavior behavior = myPet.getSkills().get(Behavior.class);
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Skill.Behavior", damager) + ": " + Translation.getString("Name." + behavior.getBehavior().name(), damager));
+                        infoShown = true;
+                    }
+                    if (CommandInfo.canSee(PetInfoDisplay.Skilltree.adminOnly, damager, myPet) && myPet.getSkilltree() != null) {
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Skilltree", damager) + ": " + Colorizer.setColors(myPet.getSkilltree().getDisplayName()));
+                        infoShown = true;
+                    }
+                    if (CommandInfo.canSee(PetInfoDisplay.Level.adminOnly, damager, myPet)) {
+                        int lvl = myPet.getExperience().getLevel();
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Level", damager) + ": " + lvl);
+                        infoShown = true;
+                    }
+                    int maxLevel = myPet.getSkilltree() != null ? myPet.getSkilltree().getMaxLevel() : Configuration.LevelSystem.Experience.LEVEL_CAP;
+                    if (CommandInfo.canSee(PetInfoDisplay.Exp.adminOnly, damager, myPet) && myPet.getExperience().getLevel() < maxLevel) {
+                        double exp = myPet.getExperience().getCurrentExp();
+                        double reqEXP = myPet.getExperience().getRequiredExp();
+                        MessageRenderer.send(damager, "   " + Translation.getString("Name.Exp", damager) + ": " + String.format("%1.2f", exp) + "/" + String.format("%1.2f", reqEXP));
+                        infoShown = true;
+                    }
+                    if (myPet.getOwner().getContributorRank() != ContributorCheck.ContributorRank.None) {
+                        infoShown = true;
+                        String contributionMessage = "" + "<gold>";
+                        contributionMessage += myPet.getOwner().getContributorRank().getDefaultIcon();
+                        contributionMessage += " " + Translation.getString("Name.Title." + myPet.getOwner().getContributorRank().name(), damager) + " ";
+                        contributionMessage += myPet.getOwner().getContributorRank().getDefaultIcon();
+                        MessageRenderer.send(damager, "   " + contributionMessage);
+                    }
+
+                    if (!infoShown) {
+                        MessageRenderer.send(damager, Translation.getString("Message.No.NothingToSeeHere", myPet.getOwner()));
+                    }
+
+                    event.setCancelled(true);
+                } else if (myPet.getOwner().equals(damager) && (!Configuration.Misc.OWNER_CAN_ATTACK_PET)) {
+                    event.setCancelled(true);
+                } else if (!myPet.getOwner().equals(damager) && !MyPetApi.getHookHelper().canHurt(damager, myPet.getOwner().getPlayer(), true)) {
+                    event.setCancelled(true);
+                }
+            }
+            if (event.getDamager() instanceof CraftMyPetProjectile) {
+                EntityMyPetProjectile projectile = ((CraftMyPetProjectile) event.getDamager()).getMyPetProjectile();
+
+                if (projectile != null && projectile.getShooter() != null) {
+                    MyPet shooterMyPet = projectile.getShooter().getMyPet();
+                    if (myPet == shooterMyPet) {
+                        event.setCancelled(true);
+                    }
+                    // Allow damage if both pets are dueling each other (bypasses PvP restrictions).
+                    // Read the Behavior skill mode like the EntityDeathEvent duel handler below does:
+                    // the targetPriority field is never populated (setMyPetTarget ignores its priority
+                    // argument), so checking getTargetPriority() == Duel here would always be false and
+                    // duel projectiles would always be canceled. Also require the shooter to actually
+                    // be targeting the pet it hit.
+                    boolean inDuel = shooterMyPet.getSkills().isActive(Behavior.class)
+                            && myPet.getSkills().isActive(Behavior.class)
+                            && shooterMyPet.getSkills().get(Behavior.class).getBehavior() == BehaviorMode.Duel
+                            && myPet.getSkills().get(Behavior.class).getBehavior() == BehaviorMode.Duel
+                            && projectile.getShooter().getMyPetTarget() == craftMyPet;
+                    if (!inDuel && !MyPetApi.getHookHelper().canHurt(projectile.getShooter().getOwner().getPlayer(), myPet.getOwner().getPlayer(), true)) {
+                        event.setCancelled(true);
+                    }
+                }
+            }
+            if (!event.isCancelled() && event.getDamager() instanceof LivingEntity) {
+                LivingEntity damager = (LivingEntity) event.getDamager();
+                if (damager instanceof Player) {
+                    if (!MyPetApi.getHookHelper().canHurt(myPet.getOwner().getPlayer(), (Player) damager, true)) {
+                        return;
+                    }
+                }
+
+                if (!isSkillActive) {
+                    for (Skill skill : myPet.getSkills().all()) {
+                        if (skill instanceof OnDamageByEntitySkill) {
+                            OnDamageByEntitySkill damageByEntitySkill = (OnDamageByEntitySkill) skill;
+                            if (damageByEntitySkill.trigger()) {
+                                isSkillActive = true;
+                                damageByEntitySkill.apply(damager, event);
+                                isSkillActive = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+
+    public void onMyPetDamageMonitor(final EntityDamageByEntityEvent event) {
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        Entity target = event.getEntity();
+        if (WorldGroup.getGroupByWorld(target.getWorld()).isDisabled()) {
+            return;
+        }
+
+        if (target instanceof LivingEntity) {
+            Entity source = event.getDamager();
+
+            if (Configuration.LevelSystem.Experience.DAMAGE_WEIGHTED_EXPERIENCE_DISTRIBUTION && !(target instanceof Player) && !(target instanceof MyPetBukkitEntity)) {
+                LivingEntity livingSource = null;
+                if (source instanceof Projectile) {
+                    Projectile projectile = (Projectile) source;
+                    if (projectile.getShooter() instanceof LivingEntity) {
+                        livingSource = (LivingEntity) projectile.getShooter();
+                    }
+                } else if (source instanceof LivingEntity) {
+                    livingSource = (LivingEntity) source;
+                }
+                if (livingSource != null) {
+                    MyPetExperience.addDamageToEntity(livingSource, (LivingEntity) target, event.getDamage());
+                }
+            }
+
+            if (source instanceof Projectile) {
+                ProjectileSource projectileSource = ((Projectile) source).getShooter();
+                if (projectileSource instanceof Entity) {
+                    source = (Entity) projectileSource;
+                }
+            }
+
+            if (source instanceof MyPetBukkitEntity) {
+                MyPet myPet = ((MyPetBukkitEntity) source).getMyPet();
+
+                if (myPet.getStatus() != PetState.Here) {
+                    return;
+                }
+
+                // We run at MONITOR, so the BASE modifier already reflects what earlier plugins did to it.
+                // MythicLib (MMOItems) applies a player's DEFENSE at HIGHEST by writing the mitigated value
+                // into the BASE modifier via setDamage(double); resetting to getOriginalDamage(BASE) here would
+                // erase that defense (the original "ignore all plugin influence" behaviour). We take the
+                // smaller of the original and current BASE so legitimate reductions (armor/defense/resistance)
+                // are honoured while the pet's configured Damage still acts as a cap against damage-inflating
+                // plugins. BASE excludes the vanilla ARMOR modifier, so armor is not double-counted.
+                double baseDamage = Math.min(
+                        event.getOriginalDamage(EntityDamageEvent.DamageModifier.BASE),
+                        event.getDamage(EntityDamageEvent.DamageModifier.BASE));
+                MyPetDamageEvent petDamageEvent = new MyPetDamageEvent(myPet, target, baseDamage);
+                Bukkit.getPluginManager().callEvent(petDamageEvent);
+                if (petDamageEvent.isCancelled()) {
+                    event.setCancelled(true);
+                    return;
+                } else {
+                    event.setDamage(petDamageEvent.getDamage());
+                }
+
+                if (!isSkillActive) {
+                    for (Skill skill : myPet.getSkills().all()) {
+                        if (skill instanceof OnHitSkill) {
+                            OnHitSkill onHitSkill = (OnHitSkill) skill;
+                            if (onHitSkill.trigger()) {
+                                MyPetOnHitSkillEvent skillEvent = new MyPetOnHitSkillEvent(myPet, onHitSkill, (LivingEntity) target);
+                                Bukkit.getPluginManager().callEvent(skillEvent);
+                                if (!skillEvent.isCancelled()) {
+                                    isSkillActive = true;
+                                    onHitSkill.apply((LivingEntity) target);
+                                    isSkillActive = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onMyPet(final EntityDamageEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        if (event.getEntity() instanceof MyPetBukkitEntity) {
+            if (WorldGroup.getGroupByWorld(event.getEntity().getWorld()).isDisabled()) {
+                return;
+            }
+
+            MyPetBukkitEntity bukkitEntity = (MyPetBukkitEntity) event.getEntity();
+
+            if(event.getCause() == DamageCause.FALL && JUMP_EFFECT != null && bukkitEntity.hasPotionEffect(JUMP_EFFECT)) {
+                event.setCancelled(true);
+                return;
+            }
+            
+            if (event.getCause() == DamageCause.SUFFOCATION) {
+                if (bukkitEntity.getHandle().hasMyPetRider()) {
+                    event.setCancelled(true);
+                    return;
+                }
+                final MyPet myPet = bukkitEntity.getMyPet();
+                final MyPetPlayer myPetPlayer = myPet.getOwner();
+
+                myPet.removePet();
+                myPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Spawn.Despawn", myPetPlayer.getLanguage()), myPet.getPetName()));
+
+                SchedulerManager.runAtEntityLater(bukkitEntity, () -> {
+                    if (myPetPlayer.hasMyPet()) {
+                        MyPet runMyPet = myPetPlayer.getMyPet();
+                        switch (runMyPet.createEntity()) {
+                            case Canceled:
+                                runMyPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Spawn.Prevent", myPet.getOwner()), runMyPet.getPetName()));
+                                break;
+                            case NoSpace:
+                                runMyPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Spawn.NoSpace", myPet.getOwner()), runMyPet.getPetName()));
+                                break;
+                            case NotAllowed:
+                                runMyPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.No.AllowedHere", myPet.getOwner()), myPet.getPetName()));
+                                break;
+                            case Flying:
+                                runMyPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Spawn.Flying", myPet.getOwner()), myPet.getPetName()));
+                                break;
+                            case Success:
+                                if (runMyPet != myPet) {
+                                    runMyPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Command.Call.Success", myPet.getOwner()), runMyPet.getPetName()));
+                                }
+                                break;
+                        }
+                    }
+                }, 10L);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMyPet(final EntityDeathEvent event) {
+        //noinspection ConstantConditions
+        if (event.getEntity() == null) {
+            // catch invalid events (i.e. EnchantmentAPI)
+            return;
+        }
+        LivingEntity deadEntity = event.getEntity();
+        if (WorldGroup.getGroupByWorld(deadEntity.getWorld()).isDisabled()) {
+            return;
+        }
+        if (deadEntity instanceof MyPetBukkitEntity) {
+            MyPet myPet = ((MyPetBukkitEntity) deadEntity).getMyPet();
+            // check health for death events where the pet isn't really dead (/killall)
+            if (myPet == null || myPet.getHealth() > 0) {
+                return;
+            }
+
+            final MyPetPlayer owner = myPet.getOwner();
+
+            if (MyPetApi.getMyPetInfo().getReleaseOnDeath(myPet.getPetType()) && !owner.isMyPetAdmin()) {
+                MyPetRemoveEvent removeEvent = new MyPetRemoveEvent(myPet, MyPetRemoveEvent.Source.Death);
+                Bukkit.getServer().getPluginManager().callEvent(removeEvent);
+
+                if (myPet.getSkills().isActive(Backpack.class)) {
+                    CustomInventory inv = myPet.getSkills().get(Backpack.class).getInventory();
+                    inv.dropContentAt(myPet.getLocation().get());
+                }
+                if (myPet instanceof MyPetEquipment) {
+                    ((MyPetEquipment) myPet).dropEquipment();
+                }
+
+
+                myPet.removePet();
+                owner.setMyPetForWorldGroup(WorldGroup.getGroupByWorld(owner.getPlayer().getWorld().getName()), null);
+
+                myPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Command.Release.Dead", owner), myPet.getPetName()));
+
+                MyPetApi.getMyPetManager().deactivateMyPet(owner, false);
+                MyPetApi.getRepository().removeMyPet(myPet.getUUID(), null);
+
+                return;
+            }
+
+            myPet.setRespawnTime((Configuration.Respawn.TIME_FIXED + MyPetApi.getMyPetInfo().getCustomRespawnTimeFixed(myPet.getPetType())) + (myPet.getExperience().getLevel() * (Configuration.Respawn.TIME_FACTOR + MyPetApi.getMyPetInfo().getCustomRespawnTimeFactor(myPet.getPetType()))));
+            myPet.setStatus(PetState.Dead);
+
+            if (deadEntity.getLastDamageCause() instanceof EntityDamageByEntityEvent) {
+                EntityDamageByEntityEvent e = (EntityDamageByEntityEvent) deadEntity.getLastDamageCause();
+
+                if (e.getDamager() instanceof Player) {
+                    myPet.setRespawnTime((Configuration.Respawn.TIME_PLAYER_FIXED + MyPetApi.getMyPetInfo().getCustomRespawnTimeFixed(myPet.getPetType())) + (myPet.getExperience().getLevel() * (Configuration.Respawn.TIME_PLAYER_FACTOR + MyPetApi.getMyPetInfo().getCustomRespawnTimeFactor(myPet.getPetType()))));
+                } else if (e.getDamager() instanceof MyPetBukkitEntity) {
+                    MyPet killerMyPet = ((MyPetBukkitEntity) e.getDamager()).getMyPet();
+                    if (myPet.getSkills().isActive(Behavior.class) && killerMyPet.getSkills().isActive(Behavior.class)) {
+                        Behavior killerBehaviorSkill = killerMyPet.getSkills().get(Behavior.class);
+                        Behavior deadBehaviorSkill = myPet.getSkills().get(Behavior.class);
+                        if (deadBehaviorSkill.getBehavior() == BehaviorMode.Duel && killerBehaviorSkill.getBehavior() == BehaviorMode.Duel) {
+                            MyPetMinecraftEntity myPetEntity = ((MyPetBukkitEntity) deadEntity).getHandle();
+
+                            if (e.getDamager().equals(myPetEntity.getMyPetTarget())) {
+                                myPet.setRespawnTime(10);
+                                killerMyPet.setHealth(Double.MAX_VALUE);
+                            }
+                        }
+                    }
+                }
+            }
+            event.setDroppedExp(0);
+            event.getDrops().clear();
+
+            if (Configuration.LevelSystem.Experience.LOSS_FIXED > 0 || Configuration.LevelSystem.Experience.LOSS_PERCENT > 0) {
+                double lostExpirience = Configuration.LevelSystem.Experience.LOSS_FIXED;
+                lostExpirience += myPet.getExperience().getRequiredExp() * Configuration.LevelSystem.Experience.LOSS_PERCENT / 100;
+                if (lostExpirience > myPet.getExp()) {
+                    lostExpirience = myPet.getExp();
+                }
+                if (myPet.getSkilltree() != null) {
+                    int requiredLevel = myPet.getSkilltree().getRequiredLevel();
+                    if (requiredLevel > 1) {
+                        double minExp = myPet.getExperience().getExpByLevel(requiredLevel);
+                        lostExpirience = myPet.getExp() - lostExpirience < minExp ? myPet.getExp() - minExp : lostExpirience;
+                    }
+                }
+                if (Configuration.LevelSystem.Experience.ALLOW_LEVEL_DOWNGRADE) {
+                    lostExpirience = myPet.getExperience().removeExp(lostExpirience);
+                } else {
+                    lostExpirience = myPet.getExperience().removeCurrentExp(lostExpirience);
+                }
+                if (Configuration.LevelSystem.Experience.DROP_LOST_EXP && lostExpirience < 0) {
+                    event.setDroppedExp((int) (Math.abs(lostExpirience)));
+                }
+            }
+            if (myPet.getSkills().isActive(Backpack.class)) {
+                BackpackImpl inventorySkill = myPet.getSkills().get(BackpackImpl.class);
+                inventorySkill.closeInventory();
+                if (inventorySkill.getDropOnDeath().getValue() && !owner.isMyPetAdmin()) {
+                    inventorySkill.getInventory().dropContentAt(myPet.getLocation().get());
+                }
+            }
+            sendDeathMessage(event);
+            myPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Spawn.Respawn.In", owner.getPlayer()), myPet.getPetName(), myPet.getRespawnTime()));
+
+            if (MyPetApi.getHookHelper().isEconomyEnabled() && owner.hasAutoRespawnEnabled() && myPet.getRespawnTime() <= owner.getAutoRespawnMin() && Permissions.has(owner.getPlayer(), "MyPet.command.respawn")) {
+                double costs = myPet.getRespawnTime() * Configuration.Respawn.COSTS_FACTOR + Configuration.Respawn.COSTS_FIXED;
+                if (MyPetApi.getHookHelper().getEconomy().canPay(owner, costs)) {
+                    MyPetApi.getHookHelper().getEconomy().pay(owner, costs);
+                    myPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Command.Respawn.Paid", owner.getPlayer()), myPet.getPetName(), costs + " " + MyPetApi.getHookHelper().getEconomy().currencyNameSingular()));
+                    myPet.setRespawnTime(1);
+                } else {
+                    myPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.Command.Respawn.NoMoney", owner.getPlayer()), myPet.getPetName(), costs + " " + MyPetApi.getHookHelper().getEconomy().currencyNameSingular()));
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("RedundantCast")
+    private void sendDeathMessage(final EntityDeathEvent event) {
+        if (event.getEntity() instanceof MyPetBukkitEntity && MyPetApi.getPlatformHelper().gameruleDoDeathMessages(event.getEntity())) {
+            MyPet myPet = ((MyPetBukkitEntity) event.getEntity()).getMyPet();
+            String killer;
+            if (event.getEntity().getLastDamageCause() instanceof EntityDamageByEntityEvent) {
+                EntityDamageByEntityEvent e = (EntityDamageByEntityEvent) event.getEntity().getLastDamageCause();
+
+                if (e.getDamager().getType() == EntityType.PLAYER) {
+                    if (e.getDamager() == myPet.getOwner().getPlayer()) {
+                        killer = Translation.getString("Name.You", myPet.getOwner());
+                    } else {
+                        killer = ((Player) e.getDamager()).getName();
+                    }
+                } else if (e.getDamager().getType() == EntityType.WOLF) {
+                    Wolf w = (Wolf) e.getDamager();
+                    killer = PetDefaultNameResolver.resolve(MyPetType.Wolf, myPet.getOwner());
+                    if (w.isTamed()) {
+                        killer += " (" + w.getOwner().getName() + ')';
+                    }
+                } else if (e.getDamager() instanceof MyPetBukkitEntity) {
+                    MyPetBukkitEntity craftMyPet = (MyPetBukkitEntity) e.getDamager();
+                    killer = "<aqua>" + craftMyPet.getMyPet().getPetName() + "<reset>" + " (" + craftMyPet.getOwner().getName() + ')';
+                } else if (e.getDamager() instanceof Projectile) {
+                    Projectile projectile = (Projectile) e.getDamager();
+                    killer = VanillaTranslationLoader.resolveEntityName(projectile.getType().name(), myPet.getOwner().getLanguage()) + " (";
+                    if (projectile.getShooter() instanceof Player) {
+                        if (projectile.getShooter() == myPet.getOwner().getPlayer()) {
+                            killer += Translation.getString("Name.You", myPet.getOwner());
+                        } else {
+                            killer += ((Player) projectile.getShooter()).getName();
+                        }
+                    } else {
+                        if (MyPetApi.getMyPetInfo().isLeashableEntityType(e.getDamager().getType())) {
+                            killer += PetDefaultNameResolver.resolve(MyPetType.byEntityTypeName(e.getDamager().getType().name()), myPet.getOwner());
+                        } else if (e.getDamager().getType().getName() != null) {
+                            killer += VanillaTranslationLoader.resolveEntityName(e.getDamager().getType().name(), myPet.getOwner().getLanguage());
+                        } else {
+                            killer += Translation.getString("Name.Unknow", myPet.getOwner());
+                        }
+                    }
+                    killer += ")";
+                } else {
+                    if (MyPetApi.getMyPetInfo().isLeashableEntityType(e.getDamager().getType())) {
+                        killer = PetDefaultNameResolver.resolve(MyPetType.byEntityTypeName(e.getDamager().getType().name()), myPet.getOwner());
+                    } else {
+                        if (e.getDamager().getType().getName() != null) {
+                            killer = VanillaTranslationLoader.resolveEntityName(e.getDamager().getType().name(), myPet.getOwner().getLanguage());
+                        } else {
+                            killer = Translation.getString("Name.Unknow", myPet.getOwner());
+                        }
+                    }
+                }
+            } else {
+                if (event.getEntity().getLastDamageCause() != null) {
+                    killer = Translation.getString("Name." + Util.capitalizeName(event.getEntity().getLastDamageCause().getCause().name()), myPet.getOwner());
+                } else {
+                    killer = Translation.getString("Name.Unknow", myPet.getOwner());
+                }
+            }
+
+            myPet.getOwner().sendMessage(Util.formatText(Translation.getString("Message.DeathMessage", myPet.getOwner()), myPet.getPetName(), killer));
+        }
+    }
+}

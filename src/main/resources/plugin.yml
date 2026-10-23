@@ -1,0 +1,462 @@
+name: MyPetClassic
+main: de.Keyle.MyPet.MyPetPlugin
+version: ${mypetVersion}
+api-version: '1.21'
+folia-supported: true
+author: b1gtorch
+description: Легендарный MyPet, возрождённый для 1.21.5+
+website: https://mypet.plugin.de/
+softdepend:
+  - Ancient
+  - BattleArena
+  - BossShopPro
+  - Citizens
+  - CombatLogX
+  - FabledSkyBlock
+  - Factions
+  - GangsPlus
+  - GriefPrevention
+  - GriefPreventionPlus
+  - Guilds
+  - Heroes
+  - Kingdoms
+  - Lands
+  - MagicSpells
+  - mcMMO
+  - Minigames
+  - MiniaturePets
+  - MobArena
+  - MobStacker
+  - Multiverse-Core
+  - My_Worlds
+  - MythicMobs
+  - NoCheatPlus
+  - PlaceholderAPI
+  - PlotSquared
+  - PreciousStones
+  - PremiumVanish
+  - ProtocolLib
+  - pvparena
+  - PvPDiffTimer
+  - PvPManager
+  - RedProtect
+  - Residence
+  - SimpleClans
+  - SkillAPI
+  - StackMob
+  - SuperVanish
+  - SurvivalGames
+  - Towny
+  - Vault
+  - WGCustomFlags
+  - WorldGuard
+commands:
+  mypet:
+    description: MyPet plugin information and help.
+  petname:
+    description: Changes the name of your pet
+    usage: '/<command> <pet name>'
+  petcall:
+    aliases: [petc, pc]
+    description: Calls your pet.
+  petsendaway:
+    aliases: [petsa, psa]
+    description: Send your pet away.
+  petrelease:
+    description: Releases your pet.
+    usage: '/<command> <pet name>'
+  petstop:
+    aliases: [pets, ps]
+    description: Stops your pet from attacking.
+  petpickup:
+    aliases: [petp, pp]
+    description: Toogles pickup of your pet.
+  petinventory:
+    aliases: [peti, pi]
+    description: Opens the inventory of your pet.
+    usage: '/<command> [player name]'
+  petbehavior:
+    aliases: [petbehaviour, petb, pb]
+    description: Changes the behavior mode of your pet.
+    usage: '/<command> [<friendly/aggressive/normal/farm/raid/duel>]'
+  petinfo:
+    aliases: [pinfo]
+    description: Shows info about your pet.
+    usage: '/<command> [player name]'
+  petskill:
+    aliases: [pskill]
+    description: Shows the skill levels of your pet.
+    usage: '/<command> <player name>'
+  mypetadmin:
+    aliases: [petadmin]
+    description: §6MyPet-Admin-Command §r-> §3https://wiki.mypet-plugin.de/doku.php?id=en:commands
+    permission: MyPet.admin
+  petchooseskilltree:
+    aliases: [pcst, petcst]
+    description: Chooses a skilltree.
+    usage: '/<command> <skilltree name>'
+  petbeacon:
+    aliases: [pbeacon]
+    description: Beacon!
+  petrespawn:
+    aliases: [pr, petr]
+    description: Pays respawn fee or enable auto respawn fee paying.
+    usage: '/<command> [pay/auto] [min respawn time]'
+  petcapturehelper:
+    aliases: [pch]
+    description: Toogles the CaptureHelper on/off
+  petsettings:
+    aliases: [po, peto, petoption, petoptions, psettings]
+    description: Settings command
+  petswitch:
+    aliases: [pswitch, psw]
+    description: Opens a pet selection GUI
+  petstore:
+    aliases: [pstore, pst]
+    description: Stores your current pet
+  petlist:
+    aliases: [plist]
+    description: Lists all your pet
+    usage: '/<command> <player name>'
+  pettrade:
+    aliases: [pett, pt]
+    description: Trade pet with other players
+    usage: '/<command> [accept/reject/cancel/<playername>] <price>'
+  petshop:
+    aliases: [petsh, psh]
+    description: Opens a pet shop
+    usage: '/<command> [shopname]'
+
+permissions:
+  MyPet.leash.*:
+    description: Player can leash all MyPet-Types.
+    children:
+      MyPet.leash.Allay: true
+      MyPet.leash.Axolotl: true
+      MyPet.leash.Armadillo: true
+      MyPet.leash.Bat: true
+      MyPet.leash.Bee: true
+      MyPet.leash.Blaze: true
+      MyPet.leash.Bogged: true
+      MyPet.leash.Breeze: true
+      MyPet.leash.Camel: true
+      MyPet.leash.Cat: true
+      MyPet.leash.CaveSpider: true
+      MyPet.leash.Chicken: true
+      MyPet.leash.Cod: true
+      MyPet.leash.Cow: true
+      MyPet.leash.Creeper: true
+      MyPet.leash.Dolphin: true
+      MyPet.leash.Donkey: true
+      MyPet.leash.Drowned: true
+      MyPet.leash.ElderGuardian: true
+      MyPet.leash.Enderdragon: true
+      MyPet.leash.Enderman: true
+      MyPet.leash.Endermite: true
+      MyPet.leash.Evoker: true
+      MyPet.leash.Fox: true
+      MyPet.leash.Frog: true
+      MyPet.leash.Giant: true
+      MyPet.leash.Ghast: true
+      MyPet.leash.Goat: true
+      MyPet.leash.Guardian: true
+      MyPet.leash.Hoglin: true
+      MyPet.leash.Horse: true
+      MyPet.leash.Husk: true
+      MyPet.leash.Illusioner: true
+      MyPet.leash.IronGolem: true
+      MyPet.leash.Llama: true
+      MyPet.leash.MagmaCube: true
+      MyPet.leash.Mooshroom: true
+      MyPet.leash.Mule: true
+      MyPet.leash.Ocelot: true
+      MyPet.leash.Panda: true
+      MyPet.leash.Parrot: true
+      MyPet.leash.Phantom: true
+      MyPet.leash.Pig: true
+      MyPet.leash.Piglin: true
+      MyPet.leash.PigZombie: true
+      MyPet.leash.Pillager: true
+      MyPet.leash.PolarBear: true
+      MyPet.leash.Pufferfish: true
+      MyPet.leash.Rabbit: true
+      MyPet.leash.Ravager: true
+      MyPet.leash.Salmon: true
+      MyPet.leash.Sheep: true
+      MyPet.leash.Silverfish: true
+      MyPet.leash.Skeleton: true
+      MyPet.leash.SkeletonHorse: true
+      MyPet.leash.Slime: true
+      MyPet.leash.Sniffer: true
+      MyPet.leash.Snowman: true
+      MyPet.leash.Spider: true
+      MyPet.leash.Squid: true
+      MyPet.leash.GlowSquid: true
+      MyPet.leash.Stray: true
+      MyPet.leash.Strider: true
+      MyPet.leash.Tadpole: true
+      MyPet.leash.TraderLlama: true
+      MyPet.leash.TropicalFish: true
+      MyPet.leash.Turtle: true
+      MyPet.leash.Vex: true
+      MyPet.leash.Villager: true
+      MyPet.leash.Vindicator: true
+      MyPet.leash.WanderingTrader: true
+      MyPet.leash.Warden: true
+      MyPet.leash.Witch: true
+      MyPet.leash.Wither: true
+      MyPet.leash.WitherSkeleton: true
+      MyPet.leash.Wolf: true
+      MyPet.leash.Zoglin: true
+      MyPet.leash.Zombie: true
+      MyPet.leash.ZombieHorse: true
+      MyPet.leash.ZombieVillager: true
+      MyPet.leash.ZombifiedPiglin: true
+      MyPet.leash.Creaking: true
+  MyPet.command.trade.offer.*:
+    description: Player offer all MyPet-Types.
+    children:
+      MyPet.command.trade.offer.Allay: true
+      MyPet.command.trade.offer.Axolotl: true
+      MyPet.command.trade.offer.Armadillo: true
+      MyPet.command.trade.offer.Bat: true
+      MyPet.command.trade.offer.Bee: true
+      MyPet.command.trade.offer.Blaze: true
+      MyPet.command.trade.offer.Bogged: true
+      MyPet.command.trade.offer.Breeze: true
+      MyPet.command.trade.offer.Cat: true
+      MyPet.command.trade.offer.CaveSpider: true
+      MyPet.command.trade.offer.Chicken: true
+      MyPet.command.trade.offer.Cod: true
+      MyPet.command.trade.offer.Cow: true
+      MyPet.command.trade.offer.Creeper: true
+      MyPet.command.trade.offer.Dolphin: true
+      MyPet.command.trade.offer.Donkey: true
+      MyPet.command.trade.offer.Drowned: true
+      MyPet.command.trade.offer.ElderGuardian: true
+      MyPet.command.trade.offer.Enderdragon: true
+      MyPet.command.trade.offer.Enderman: true
+      MyPet.command.trade.offer.Endermite: true
+      MyPet.command.trade.offer.Evoker: true
+      MyPet.command.trade.offer.Fox: true
+      MyPet.command.trade.offer.Frog: true
+      MyPet.command.trade.offer.Giant: true
+      MyPet.command.trade.offer.Ghast: true
+      MyPet.command.trade.offer.Goat: true
+      MyPet.command.trade.offer.Guardian: true
+      MyPet.command.trade.offer.Hoglin: true
+      MyPet.command.trade.offer.Horse: true
+      MyPet.command.trade.offer.Husk: true
+      MyPet.command.trade.offer.IronGolem: true
+      MyPet.command.trade.offer.Llama: true
+      MyPet.command.trade.offer.MagmaCube: true
+      MyPet.command.trade.offer.Mooshroom: true
+      MyPet.command.trade.offer.Mule: true
+      MyPet.command.trade.offer.Ocelot: true
+      MyPet.command.trade.offer.Panda: true
+      MyPet.command.trade.offer.Parrot: true
+      MyPet.command.trade.offer.Phantom: true
+      MyPet.command.trade.offer.Pig: true
+      MyPet.command.trade.offer.Piglin: true
+      MyPet.command.trade.offer.PigZombie: true
+      MyPet.command.trade.offer.Pillager: true
+      MyPet.command.trade.offer.PolarBear: true
+      MyPet.command.trade.offer.Pufferfish: true
+      MyPet.command.trade.offer.Rabbit: true
+      MyPet.command.trade.offer.Ravager: true
+      MyPet.command.trade.offer.Salmon: true
+      MyPet.command.trade.offer.Sheep: true
+      MyPet.command.trade.offer.Silverfish: true
+      MyPet.command.trade.offer.Skeleton: true
+      MyPet.command.trade.offer.SkeletonHorse: true
+      MyPet.command.trade.offer.Slime: true
+      MyPet.command.trade.offer.Snowman: true
+      MyPet.command.trade.offer.Spider: true
+      MyPet.command.trade.offer.Squid: true
+      MyPet.command.trade.offer.GlowSquid: true
+      MyPet.command.trade.offer.Stray: true
+      MyPet.command.trade.offer.Strider: true
+      MyPet.command.trade.offer.Tadpole: true
+      MyPet.command.trade.offer.TraderLlama: true
+      MyPet.command.trade.offer.TropicalFish: true
+      MyPet.command.trade.offer.Turtle: true
+      MyPet.command.trade.offer.Vex: true
+      MyPet.command.trade.offer.Villager: true
+      MyPet.command.trade.offer.Vindicator: true
+      MyPet.command.trade.offer.WanderingTrader: true
+      MyPet.command.trade.offer.Warden: true
+      MyPet.command.trade.offer.Witch: true
+      MyPet.command.trade.offer.Wither: true
+      MyPet.command.trade.offer.WitherSkeleton: true
+      MyPet.command.trade.offer.Wolf: true
+      MyPet.command.trade.offer.Zoglin: true
+      MyPet.command.trade.offer.Zombie: true
+      MyPet.command.trade.offer.ZombieHorse: true
+      MyPet.command.trade.offer.ZombieVillager: true
+      MyPet.command.trade.offer.ZombifiedPiglin: true
+  MyPet.command.trade.receive.*:
+    description: Player receive all MyPet-Types.
+    children:
+      MyPet.command.trade.receive.Allay: true
+      MyPet.command.trade.receive.Axolotl: true
+      MyPet.command.trade.receive.Armadillo: true
+      MyPet.command.trade.receive.Bat: true
+      MyPet.command.trade.receive.Bee: true
+      MyPet.command.trade.receive.Blaze: true
+      MyPet.command.trade.receive.Bogged: true
+      MyPet.command.trade.receive.Breeze: true
+      MyPet.command.trade.receive.Cat: true
+      MyPet.command.trade.receive.CaveSpider: true
+      MyPet.command.trade.receive.Chicken: true
+      MyPet.command.trade.receive.Cod: true
+      MyPet.command.trade.receive.Cow: true
+      MyPet.command.trade.receive.Creeper: true
+      MyPet.command.trade.receive.Dolphin: true
+      MyPet.command.trade.receive.Donkey: true
+      MyPet.command.trade.receive.Drowned: true
+      MyPet.command.trade.receive.ElderGuardian: true
+      MyPet.command.trade.receive.Enderdragon: true
+      MyPet.command.trade.receive.Enderman: true
+      MyPet.command.trade.receive.Endermite: true
+      MyPet.command.trade.receive.Evoker: true
+      MyPet.command.trade.receive.Fox: true
+      MyPet.command.trade.receive.Frog: true
+      MyPet.command.trade.receive.Giant: true
+      MyPet.command.trade.receive.Ghast: true
+      MyPet.command.trade.receive.Goat: true
+      MyPet.command.trade.receive.Guardian: true
+      MyPet.command.trade.receive.Hoglin: true
+      MyPet.command.trade.receive.Horse: true
+      MyPet.command.trade.receive.Husk: true
+      MyPet.command.trade.receive.IronGolem: true
+      MyPet.command.trade.receive.Llama: true
+      MyPet.command.trade.receive.MagmaCube: true
+      MyPet.command.trade.receive.Mooshroom: true
+      MyPet.command.trade.receive.Mule: true
+      MyPet.command.trade.receive.Ocelot: true
+      MyPet.command.trade.receive.Panda: true
+      MyPet.command.trade.receive.Parrot: true
+      MyPet.command.trade.receive.Phantom: true
+      MyPet.command.trade.receive.Pig: true
+      MyPet.command.trade.receive.Piglin: true
+      MyPet.command.trade.receive.PigZombie: true
+      MyPet.command.trade.receive.Pillager: true
+      MyPet.command.trade.receive.PolarBear: true
+      MyPet.command.trade.receive.Pufferfish: true
+      MyPet.command.trade.receive.Rabbit: true
+      MyPet.command.trade.receive.Ravager: true
+      MyPet.command.trade.receive.Salmon: true
+      MyPet.command.trade.receive.Sheep: true
+      MyPet.command.trade.receive.Silverfish: true
+      MyPet.command.trade.receive.Skeleton: true
+      MyPet.command.trade.receive.SkeletonHorse: true
+      MyPet.command.trade.receive.Slime: true
+      MyPet.command.trade.receive.Snowman: true
+      MyPet.command.trade.receive.Spider: true
+      MyPet.command.trade.receive.Squid: true
+      MyPet.command.trade.receive.GlowSquid: true
+      MyPet.command.trade.receive.Stray: true
+      MyPet.command.trade.receive.Strider: true
+      MyPet.command.trade.receive.Tadpole: true
+      MyPet.command.trade.receive.TraderLlama: true
+      MyPet.command.trade.receive.TropicalFish: true
+      MyPet.command.trade.receive.Turtle: true
+      MyPet.command.trade.receive.Vex: true
+      MyPet.command.trade.receive.Villager: true
+      MyPet.command.trade.receive.Vindicator: true
+      MyPet.command.trade.receive.WanderingTrader: true
+      MyPet.command.trade.receive.Warden: true
+      MyPet.command.trade.receive.Witch: true
+      MyPet.command.trade.receive.Wither: true
+      MyPet.command.trade.receive.WitherSkeleton: true
+      MyPet.command.trade.receive.Wolf: true
+      MyPet.command.trade.receive.Zoglin: true
+      MyPet.command.trade.receive.Zombie: true
+      MyPet.command.trade.receive.ZombieHorse: true
+      MyPet.command.trade.receive.ZombieVillager: true
+      MyPet.command.trade.receive.ZombifiedPiglin: true
+  MyPet.admin:
+    description: Gives access to the MyPet admin features.
+  MyPet.*:
+    description: Gives access to MyPet features for normal user.
+    children:
+      MyPet.leash.*: true
+      MyPet.command.respawn: true
+      MyPet.command.release: true
+      MyPet.command.capturehelper: true
+      MyPet.command.name: true
+      MyPet.command.name.color: true
+      MyPet.command.options: true
+      MyPet.command.trade.offer.*: true
+      MyPet.command.trade.receive.*: true
+      MyPet.command.list: true
+  MyPet.command.release:
+    description: Allows usage of /petrelease
+  MyPet.command.capturehelper:
+    description: Gives access to the CaptureHelper
+  MyPet.command.respawn:
+    description: Allows usage of /petrespawn
+  MyPet.command.name:
+    description: Allows usage of /petname
+  MyPet.command.name.color:
+    description: Allows to use colors in petnames
+  MyPet.command.options:
+    description: Allows to use the MyPet options command
+  MyPet.command.switch:
+    description: Allows to switch between MyPets
+  MyPet.command.store:
+    description: Allows to store MyPets
+  MyPet.command.info.other:
+    description: Allows to view info about pets from other players with "/petinfo <playername>"
+  MyPet.extended.feed:
+    description: Extended permission. Allows to feed pets.
+  MyPet.extended.equip:
+    description: Extended permission. Allows to equip pets.
+  MyPet.extended.beacon:
+    description: Extended permission. Allows to open the beacon GUI.
+  MyPet.extended.inventory:
+    description: Extended permission. Allows to open the inventory of the pet.
+  MyPet.extended.ride:
+    description: Extended permission. Allows to mount pets.
+  MyPet.extended.ride.fly:
+    description: Extended permission. Allows to fly the pet while riding.
+  MyPet.extended.control:
+    description: Extended permission. Allows to control pets.
+  MyPet.extended.nametag:
+    description: Extended permission. Allows renaming pets with a name tag.
+  MyPet.user.respawn:
+    description: Allows paying to respawn a pet automatically.
+  MyPet.shop.storage:
+    description: Allows buying a pet while already having an active pet (the pet is moved to storage).
+  MyPet.npc.shop:
+    description: Allows using the MyPet shop NPC trait.
+  MyPet.npc.storage:
+    description: Allows using the MyPet storage NPC trait.
+  MyPet.command.trade.offer:
+    description: Allows offering a pet for trade.
+  MyPet.command.trade.receive:
+    description: Allows receiving a pet in trade.
+  MyPet.extended.pickup:
+    description: Extended permission. Allows to enable pickup.
+  MyPet.extended.behavior.friendly:
+    description: Extended permission. Allows to use the ´friendly´ behavior.
+  MyPet.extended.behavior.aggressive:
+    description: Extended permission. Allows to use the ´aggressive´ behavior.
+  MyPet.extended.behavior.farm:
+    description: Extended permission. Allows to use the ´farm´ behavior.
+  MyPet.extended.behavior.raid:
+    description: Extended permission. Allows to use the ´raid´ behavior.
+  MyPet.extended.behavior.duel:
+    description: Extended permission. Allows to use the ´duel´ behavior.
+  MyPet.experience.multiplier.125:
+    description: Grants 25% extra experience.
+  MyPet.experience.multiplier.150:
+    description: Grants 50% extra experience.
+  MyPet.experience.multiplier.175:
+    description: Grants 75% extra experience.
+  MyPet.experience.multiplier.200:
+    description: Grants 100% extra experience.
+  MyPet.experience.multiplier.225:
+    description: Grants 125% extra experience.
+  MyPet.experience.multiplier.250:
+    description: Grants 150% extra experience.

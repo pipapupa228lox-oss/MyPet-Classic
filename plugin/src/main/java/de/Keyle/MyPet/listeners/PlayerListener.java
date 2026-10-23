@@ -1,0 +1,720 @@
+/*
+ * This file is part of MyPet
+ *
+ * Copyright © 2011-2020 Keyle
+ * MyPet is licensed under the GNU Lesser General Public License.
+ *
+ * MyPet is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyPet is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package de.Keyle.MyPet.listeners;
+
+import net.kyori.adventure.text.format.NamedTextColor;
+
+import net.kyori.adventure.text.event.HoverEvent;
+
+import net.kyori.adventure.text.event.ClickEvent;
+
+import net.kyori.adventure.text.Component;
+
+import de.Keyle.MyPet.MyPetApi;
+import de.Keyle.MyPet.api.Configuration;
+import de.Keyle.MyPet.api.Util;
+import de.Keyle.MyPet.api.WorldGroup;
+import de.Keyle.MyPet.api.entity.MyPet;
+import de.Keyle.MyPet.api.entity.MyPetBukkitEntity;
+import de.Keyle.MyPet.api.entity.StoredMyPet;
+import de.Keyle.MyPet.api.entity.skill.ranged.CraftMyPetProjectile;
+import de.Keyle.MyPet.api.event.MyPetPlayerJoinEvent;
+import de.Keyle.MyPet.api.player.MyPetPlayer;
+import de.Keyle.MyPet.api.player.Permissions;
+import de.Keyle.MyPet.api.repository.RepositoryCallback;
+import de.Keyle.MyPet.api.skill.skills.Behavior;
+import de.Keyle.MyPet.api.skill.skills.Behavior.BehaviorMode;
+import de.Keyle.MyPet.api.skill.skills.Ride;
+import de.Keyle.MyPet.api.util.inventory.CustomInventory;
+import de.Keyle.MyPet.api.util.locale.Translation;
+import de.Keyle.MyPet.repository.types.SqLiteRepository;
+import de.Keyle.MyPet.skill.skills.BackpackImpl;
+import de.Keyle.MyPet.skill.skills.BeaconImpl;
+import de.Keyle.MyPet.skill.skills.ControlImpl;
+import de.Keyle.MyPet.skill.skills.ShieldImpl;
+import de.Keyle.MyPet.util.Updater;
+import de.Keyle.MyPet.util.player.MyPetPlayerImpl;
+import org.bukkit.Bukkit;
+
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.*;
+import de.Keyle.MyPet.api.util.CompatRunnable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import de.Keyle.MyPet.api.util.message.MessageRenderer;
+
+public class PlayerListener implements Listener {
+
+    // Beacon zone state tracking (ConcurrentHashMap for thread safety)
+    private final Map<UUID, BeaconZoneState> beaconZoneStates = new ConcurrentHashMap<>();
+
+    private static final class BeaconZoneState {
+        private static final double EPSILON = 0.0001;
+        final boolean deny, selfDeny, shareDeny;
+        final double rangeMult, durationMult;
+        final int amplifierMod;
+
+        BeaconZoneState(boolean deny, boolean selfDeny, boolean shareDeny,
+                        double rangeMult, double durationMult, int amplifierMod) {
+            this.deny = deny;
+            this.selfDeny = selfDeny;
+            this.shareDeny = shareDeny;
+            this.rangeMult = rangeMult;
+            this.durationMult = durationMult;
+            this.amplifierMod = amplifierMod;
+        }
+
+        boolean hasModifications() {
+            return deny || selfDeny || shareDeny ||
+                   Math.abs(rangeMult - 1.0) > EPSILON ||
+                   Math.abs(durationMult - 1.0) > EPSILON ||
+                   amplifierMod != 0;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof BeaconZoneState)) return false;
+            BeaconZoneState other = (BeaconZoneState) o;
+            return deny == other.deny && selfDeny == other.selfDeny &&
+                   shareDeny == other.shareDeny &&
+                   Math.abs(rangeMult - other.rangeMult) < EPSILON &&
+                   Math.abs(durationMult - other.durationMult) < EPSILON &&
+                   amplifierMod == other.amplifierMod;
+        }
+
+        @Override
+        public int hashCode() {
+            // Use rounded values for hash to be consistent with equals
+            return Objects.hash(deny, selfDeny, shareDeny,
+                   Math.round(rangeMult * 10000),
+                   Math.round(durationMult * 10000),
+                   amplifierMod);
+        }
+    }
+
+    @EventHandler
+    public void on(PlayerInteractEvent event) {
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        if (event.getAction().equals(Action.RIGHT_CLICK_AIR) && Configuration.Skilltree.Skill.CONTROL_ITEM.compare(event.getPlayer().getItemInHand()) && MyPetApi.getMyPetManager().hasActiveMyPet(event.getPlayer())) {
+            MyPet myPet = MyPetApi.getMyPetManager().getMyPet(event.getPlayer());
+            if (myPet.getStatus() == MyPet.PetState.Here && myPet.getEntity().isPresent() && myPet.getEntity().get().canMove()) {
+                if (myPet.getSkills().isActive(ControlImpl.class)) {
+                    if (myPet.getSkills().isActive(Behavior.class)) {
+                        Behavior behavior = myPet.getSkills().get(Behavior.class);
+                        if (behavior.getBehavior() == BehaviorMode.Aggressive || behavior.getBehavior() == BehaviorMode.Farm) {
+                            MessageRenderer.send(event.getPlayer(), Util.formatText(Translation.getString("Message.Skill.Control.AggroFarm", event.getPlayer()), myPet.getPetName(), behavior.getBehavior().name()));
+                            return;
+                        }
+                    }
+                    if (myPet.getSkills().isActive(Ride.class)) {
+                        if (myPet.getEntity().get().getHandle().hasMyPetRider()) {
+                            MessageRenderer.send(event.getPlayer(), Util.formatText(Translation.getString("Message.Skill.Control.Ride", event.getPlayer()), myPet.getPetName()));
+                            return;
+                        }
+                    }
+                    if (!Permissions.hasExtended(event.getPlayer(), "MyPet.extended.control")) {
+                        myPet.getOwner().sendMessage(Translation.getString("Message.No.CanUse", myPet.getOwner()), 10000);
+                        return;
+                    }
+                    Block block = event.getPlayer().getTargetBlock(null, 100);
+                    if (block != null && block.getType() != Material.AIR) {
+                        if (!block.getType().isSolid()) {
+                            block = block.getRelative(BlockFace.DOWN);
+                        }
+                        myPet.getSkills().get(ControlImpl.class).setMoveTo(block.getLocation());
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void on(PlayerGameModeChangeEvent event) {
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        if (event.getNewGameMode().name().equals("SPECTATOR")) {
+            if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getPlayer())) {
+                MyPetPlayer myPetPlayerDamagee = MyPetApi.getPlayerManager().getMyPetPlayer(event.getPlayer());
+                if (myPetPlayerDamagee.hasMyPet()) {
+                    myPetPlayerDamagee.getMyPet().removePet();
+                }
+            }
+        } else {
+            if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getPlayer())) {
+                MyPetPlayer myPetPlayerDamagee = MyPetApi.getPlayerManager().getMyPetPlayer(event.getPlayer());
+                if (myPetPlayerDamagee.hasMyPet()) {
+                    MyPet myPet = myPetPlayerDamagee.getMyPet();
+                    if (myPet.wantsToRespawn()) {
+                        switch (myPet.createEntity()) {
+                            case Success:
+                                myPetPlayerDamagee.sendMessage(Util.formatText(Translation.getString("Message.Command.Call.Success", myPetPlayerDamagee), myPet.getPetName()));
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void on(PlayerInteractEntityEvent event) {
+        String internalVersion = MyPetApi.getCompatUtil().getInternalVersion();
+        if (internalVersion != null) {
+            try {
+                // If we're running on a server using the v1_21_* (or newer) compat module, skip this logic
+                if (internalVersion.startsWith("v1_21_")) {
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (event.isCancelled()) {
+            if (event.getRightClicked() instanceof MyPetBukkitEntity) {
+                if (((MyPetBukkitEntity) event.getRightClicked()).getOwner().equals(event.getPlayer())) {
+                    event.setCancelled(false);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void on(final PlayerJoinEvent event) {
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        long delay = MyPetApi.getRepository() instanceof SqLiteRepository ? 1L : Configuration.Repository.EXTERNAL_LOAD_DELAY;
+
+        new CompatRunnable() {
+            @Override
+            public void run() {
+                MyPetApi.getRepository().getMyPetPlayer(event.getPlayer(), new RepositoryCallback<MyPetPlayer>() {
+                    @Override
+                    public void callback(final MyPetPlayer p) {
+                        final MyPetPlayerImpl joinedPlayer = (MyPetPlayerImpl) p;
+
+                        joinedPlayer.setLastKnownName(event.getPlayer().getName());
+                        if (!event.getPlayer().getUniqueId().equals(joinedPlayer.getOfflineUUID())) {
+                            if (joinedPlayer.getMojangUUID() == null) {
+                                joinedPlayer.setMojangUUID(event.getPlayer().getUniqueId());
+                            }
+                            joinedPlayer.setOnlineMode(true);
+                        }
+
+                        MyPetApi.getPlayerManager().setOnline(joinedPlayer);
+
+                        final WorldGroup joinGroup = WorldGroup.getGroupByWorld(event.getPlayer().getWorld().getName());
+                        if (joinedPlayer.hasMyPet()) {
+                            MyPet myPet = joinedPlayer.getMyPet();
+                            if (!myPet.getWorldGroup().equals(joinGroup.getName())) {
+                                MyPetApi.getMyPetManager().deactivateMyPet(joinedPlayer, true);
+                            }
+                        }
+
+                        if (!joinedPlayer.hasMyPet() && joinedPlayer.hasMyPetInWorldGroup(joinGroup.getName())) {
+                            final UUID petUUID = joinedPlayer.getMyPetForWorldGroup(joinGroup.getName());
+                            MyPetApi.getRepository().getMyPet(petUUID, new RepositoryCallback<StoredMyPet>() {
+                                @Override
+                                public void callback(StoredMyPet storedMyPet) {
+                                    MyPetApi.getMyPetManager().activateMyPet(storedMyPet);
+
+                                    if (joinedPlayer.hasMyPet()) {
+                                        final MyPet myPet = joinedPlayer.getMyPet();
+                                        if (myPet.wantsToRespawn()) {
+                                            switch (myPet.createEntity()) {
+                                                case Canceled:
+                                                    joinedPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Prevent", joinedPlayer), myPet.getPetName()));
+                                                    break;
+                                                case NotAllowed:
+                                                    joinedPlayer.sendMessage(Util.formatText(Translation.getString("Message.No.AllowedHere", joinedPlayer), myPet.getPetName()));
+                                                    break;
+                                                case Dead:
+                                                    if (Configuration.Respawn.DISABLE_AUTO_RESPAWN) {
+                                                        joinedPlayer.sendMessage(Util.formatText(Translation.getString("Message.Call.Dead", joinedPlayer), myPet.getPetName()));
+                                                    } else {
+                                                        joinedPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Respawn.In", joinedPlayer), myPet.getPetName(), myPet.getRespawnTime()));
+                                                    }
+                                                    break;
+                                                case Flying:
+                                                    joinedPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Flying", joinedPlayer), myPet.getPetName()));
+                                                    break;
+                                                case NoSpace:
+                                                    joinedPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.NoSpace", joinedPlayer), myPet.getPetName()));
+                                                    break;
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        joinedPlayer.checkForContribution();
+
+                        Bukkit.getServer().getPluginManager().callEvent(new MyPetPlayerJoinEvent(joinedPlayer));
+                    }
+                });
+            }
+        }.runTaskLater(MyPetApi.getPlugin(), delay);
+
+        if (Configuration.Update.SHOW_OP && event.getPlayer().isOp() && Updater.isUpdateAvailable()) {
+            String versionUrl = "https://modrinth.com/mod/mypet-classic/version/" + Updater.getLatest().getVersion();
+
+            Component updateMsg = MessageRenderer.parse(Translation.getString("Message.Update.Available", event.getPlayer()) + " ", event.getPlayer());
+
+            Component versionPart = MessageRenderer.parse("[" + Updater.getLatest().getVersion() + "]")
+                    .color(NamedTextColor.GREEN)
+                    .clickEvent(ClickEvent.openUrl(versionUrl))
+                    .hoverEvent(HoverEvent.showText(MessageRenderer.parse(versionUrl).color(NamedTextColor.GRAY)));
+
+            event.getPlayer().sendMessage(updateMsg.append(versionPart));
+        }
+    }
+
+    @EventHandler
+    public void onPlayerDamageByEntity(final EntityDamageByEntityEvent event) {
+        if (event.getEntity() instanceof Player) {
+            Player victim = (Player) event.getEntity();
+            if (WorldGroup.getGroupByWorld(victim.getWorld()).isDisabled()) {
+                return;
+            }
+            if (event.getDamager() instanceof CraftMyPetProjectile) {
+                CraftMyPetProjectile projectile = (CraftMyPetProjectile) event.getDamager();
+                if (MyPetApi.getPlayerManager().isMyPetPlayer(victim)) {
+                    MyPetPlayer myPetPlayerDamagee = MyPetApi.getPlayerManager().getMyPetPlayer(victim);
+                    if (myPetPlayerDamagee != null && myPetPlayerDamagee.hasMyPet()) {
+                        if (projectile != null && projectile.getMyPetProjectile().getShooter() != null) {
+                            if (myPetPlayerDamagee.getMyPet() == projectile.getMyPetProjectile().getShooter().getMyPet()) {
+                                event.setCancelled(true);
+                            }
+                        }
+                    }
+                }
+                if (projectile.getMyPetProjectile().getShooter() != null) {
+                    if (!MyPetApi.getHookHelper().canHurt(projectile.getShootingMyPet().getOwner().getPlayer(), victim, true)) {
+                        event.setCancelled(true);
+                    }
+                }
+            }
+
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerDamage(EntityDamageEvent event) {
+        if (!event.isCancelled() && event.getEntity() instanceof Player) {
+            Player victim = (Player) event.getEntity();
+            if (WorldGroup.getGroupByWorld(victim.getWorld()).isDisabled()) {
+                return;
+            }
+            if (MyPetApi.getPlayerManager().isMyPetPlayer(victim)) {
+                if (event.getCause() == EntityDamageEvent.DamageCause.FALL &&
+                        victim.isInsideVehicle() &&
+                            (victim.getVehicle() instanceof MyPetBukkitEntity ||
+                                    (victim.getVehicle().getType() == EntityType.ARMOR_STAND && victim.getVehicle().isInsideVehicle()))) {
+                    event.setCancelled(true);
+                    return;
+                }
+                MyPetPlayer myPetPlayerDamagee = MyPetApi.getPlayerManager().getMyPetPlayer(victim);
+                if (myPetPlayerDamagee != null && myPetPlayerDamagee.hasMyPet()) {
+                    MyPet myPet = myPetPlayerDamagee.getMyPet();
+                    if (myPet.getSkills().has(ShieldImpl.class)) {
+                        ShieldImpl shield = myPet.getSkills().get(ShieldImpl.class);
+                        if (shield.trigger()) {
+                            shield.apply(event);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void on(PlayerQuitEvent event) {
+        // Clean up beacon zone state
+        beaconZoneStates.remove(event.getPlayer().getUniqueId());
+
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getPlayer())) {
+            MyPetPlayer player = MyPetApi.getPlayerManager().getMyPetPlayer(event.getPlayer());
+            if (player.hasMyPet()) {
+                MyPet myPet = player.getMyPet();
+
+                if (myPet.getStatus() == MyPet.PetState.Here) {
+                    myPet.removePet(true);
+                }
+
+                MyPetApi.getMyPetManager().deactivateMyPet(player, true);
+            }
+
+            MyPetApi.getPlayerManager().setOffline(player);
+        }
+    }
+
+    @EventHandler
+    public void onMyPetPlayerChangeWorld(final PlayerChangedWorldEvent event) {
+        if (!event.getPlayer().isOnline()) {
+            return;
+        }
+
+        final WorldGroup toGroup = WorldGroup.getGroupByWorld(event.getPlayer().getWorld().getName());
+
+        if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getPlayer())) {
+            final MyPetPlayer myPetPlayer = MyPetApi.getPlayerManager().getMyPetPlayer(event.getPlayer());
+
+            // Race condition: player may have disconnected between isMyPetPlayer and getMyPetPlayer
+            if (myPetPlayer == null) {
+                return;
+            }
+
+            final WorldGroup fromGroup = WorldGroup.getGroupByWorld(event.getFrom().getName());
+
+            final MyPet myPet = myPetPlayer.hasMyPet() ? myPetPlayer.getMyPet() : null;
+            final CompatRunnable callPet = new CompatRunnable(myPetPlayer.getPlayer()) {
+                public void run() {
+                    if (myPetPlayer.isOnline() && myPetPlayer.hasMyPet()) {
+                        MyPet runMyPet = myPetPlayer.getMyPet();
+                        switch (runMyPet.createEntity()) {
+                            case Canceled:
+                                myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Prevent", myPetPlayer), runMyPet.getPetName()));
+                                break;
+                            case NoSpace:
+                                myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.NoSpace", myPetPlayer), runMyPet.getPetName()));
+                                break;
+                            case NotAllowed:
+                                myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.No.AllowedHere", myPetPlayer), runMyPet.getPetName()));
+                                break;
+                            case Dead:
+                                if (runMyPet != myPet) {
+                                    if (Configuration.Respawn.DISABLE_AUTO_RESPAWN) {
+                                        myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Call.Dead", runMyPet.getOwner()), runMyPet.getPetName()));
+                                    } else {
+                                        myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Call.Dead.Respawn", runMyPet.getOwner()), runMyPet.getPetName(), runMyPet.getRespawnTime()));
+                                    }
+                                }
+                                break;
+                            case Flying:
+                                myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Flying", myPetPlayer), runMyPet.getPetName()));
+                                break;
+                            case Success:
+                                if (runMyPet != myPet) {
+                                    myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Command.Call.Success", myPetPlayer), runMyPet.getPetName()));
+                                }
+                                break;
+                        }
+                    }
+                }
+            };
+
+            if (fromGroup != toGroup) {
+                final boolean hadMyPetInFromWorld = MyPetApi.getMyPetManager().deactivateMyPet(myPetPlayer, true);
+
+                if (toGroup.isDisabled()) {
+                    return;
+                }
+
+                if (myPetPlayer.hasMyPetInWorldGroup(toGroup)) {
+                    final UUID groupMyPetUUID = myPetPlayer.getMyPetForWorldGroup(toGroup);
+                    MyPetApi.getRepository().getMyPets(myPetPlayer, new RepositoryCallback<List<StoredMyPet>>() {
+                        @Override
+                        public void callback(List<StoredMyPet> pets) {
+                            for (StoredMyPet myPet : pets) {
+                                if (myPet.getUUID().equals(groupMyPetUUID)) {
+                                    MyPetApi.getMyPetManager().activateMyPet(myPet);
+                                    break;
+                                }
+                            }
+                            if (myPetPlayer.hasMyPet()) {
+                                if (myPetPlayer.getMyPet().wantsToRespawn()) {
+                                    callPet.runTaskLater(MyPetApi.getPlugin(), 20L);
+                                }
+                            } else {
+                                myPetPlayer.setMyPetForWorldGroup(toGroup, null);
+                            }
+                        }
+                    });
+                } else if (hadMyPetInFromWorld) {
+                    MessageRenderer.send(myPetPlayer.getPlayer(), Translation.getString("Message.MultiWorld.NoActivePetInThisWorld", myPetPlayer));
+                }
+            } else if (myPet != null) {
+                if (myPet.wantsToRespawn()) {
+                    callPet.runTaskLater(MyPetApi.getPlugin(), 20L);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    //This does not work for new minecraft versions (1.19+) as the player gets dismounted before the TeleportEvent is thrown. Yay.
+    public void onMyPet(PlayerTeleportEvent event) {
+        if (!event.getPlayer().isOnline()) {
+            return;
+        }
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        Player player = event.getPlayer();
+        if ((player.isInsideVehicle() && player.getVehicle() instanceof MyPetBukkitEntity) ||
+                (player.isInsideVehicle() && player.getVehicle().isInsideVehicle() && player.getVehicle().getVehicle() instanceof MyPetBukkitEntity)) {
+            if (player.getLocation().getWorld() != event.getTo().getWorld() || MyPetApi.getPlatformHelper().distance(event.getFrom(), event.getTo()) > 10) {
+                if (Configuration.Skilltree.Skill.Ride.PREVENT_TELEPORTATION) {
+                    event.setCancelled(true);
+                    MessageRenderer.send(player, Translation.getString("Message.Skill.Ride.NoTeleport", player));
+                    return;
+                }
+                player.getVehicle().eject();
+            }
+        }
+        if (MyPetApi.getPlayerManager().isMyPetPlayer(player)) {
+            final MyPetPlayer myPetPlayer = MyPetApi.getPlayerManager().getMyPetPlayer(player);
+            if (myPetPlayer.hasMyPet()) {
+                final MyPet myPet = myPetPlayer.getMyPet();
+                if (myPet.getStatus() == MyPet.PetState.Here) {
+                    if (event.getFrom().getWorld() != event.getTo().getWorld() || MyPetApi.getPlatformHelper().distance(event.getFrom(), event.getTo()) > 10) {
+                        final boolean sameWorld = event.getFrom().getWorld() == event.getTo().getWorld();
+                        myPet.removePet();
+                        MessageRenderer.send(Bukkit.getConsoleSender(), "MyPet: Teleporting player " + player.getName() + " (" + event.getFrom().getWorld().getName() + " -> " + event.getTo().getWorld().getName() + "). Respawning pet...");
+                        new CompatRunnable(myPetPlayer.getPlayer()) {
+                            public void run() {
+                                if (myPetPlayer.isOnline() && myPetPlayer.hasMyPet()) {
+                                    MyPet runMyPet = myPetPlayer.getMyPet();
+                                    switch (runMyPet.createEntity()) {
+                                        case Canceled:
+                                            myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Prevent", myPetPlayer), runMyPet.getPetName()));
+                                            break;
+                                        case NoSpace:
+                                            if (sameWorld) {
+                                                myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.NoSpace", myPetPlayer), runMyPet.getPetName()));
+                                            }
+                                            break;
+                                        case Flying:
+                                            if (sameWorld) {
+                                                myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Flying", myPetPlayer), runMyPet.getPetName()));
+                                            }
+                                            break;
+                                        case NotAllowed:
+                                            myPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.No.AllowedHere", myPetPlayer), runMyPet.getPetName()));
+                                            break;
+                                    }
+                                }
+                            }
+                        }.runTaskLater(MyPetApi.getPlugin(), 20L);
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void on(PlayerMoveEvent event) {
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        if (!MyPetApi.getPlatformHelper().compareBlockPositions(event.getFrom(), event.getTo())) {
+            if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getPlayer())) {
+                MyPetPlayer player = MyPetApi.getPlayerManager().getMyPetPlayer(event.getPlayer());
+                if (player.hasMyPet() && player.getMyPet().getStatus() == MyPet.PetState.Here) {
+                    if (!MyPetApi.getHookHelper().isPetAllowed(player)) {
+                        player.getMyPet().removePet(true);
+                        MessageRenderer.send(player.getPlayer(), Translation.getString("Message.No.AllowedHere", player.getPlayer()));
+                    }
+                }
+
+                // Track beacon zone state changes
+                checkBeaconZoneState(event.getPlayer(), player, event.getTo());
+            }
+        }
+    }
+
+    private void checkBeaconZoneState(Player player, MyPetPlayer mpPlayer, org.bukkit.Location to) {
+        // Only process if zone messages are enabled
+        if (!Configuration.Skilltree.Skill.Beacon.ZONE_MESSAGES) {
+            return;
+        }
+
+        // Only process if player has a pet with beacon skill
+        if (!mpPlayer.hasMyPet() || mpPlayer.getMyPet().getStatus() != MyPet.PetState.Here) {
+            return;
+        }
+        if (!mpPlayer.getMyPet().getSkills().has(BeaconImpl.class)) {
+            return;
+        }
+
+        // Build current zone state (immutable)
+        BeaconZoneState current = new BeaconZoneState(
+            !MyPetApi.getHookHelper().isBeaconAllowed(to),
+            !MyPetApi.getHookHelper().isBeaconSelfAllowed(to),
+            !MyPetApi.getHookHelper().isBeaconShareAllowed(to),
+            MyPetApi.getHookHelper().getBeaconRangeMultiplier(to),
+            MyPetApi.getHookHelper().getBeaconDurationMultiplier(to),
+            MyPetApi.getHookHelper().getBeaconAmplifierModifier(to)
+        );
+
+        BeaconZoneState previous = beaconZoneStates.get(player.getUniqueId());
+
+        if (previous == null || !current.equals(previous)) {
+            beaconZoneStates.put(player.getUniqueId(), current);
+
+            // Don't message on first check (login/join)
+            if (previous == null) {
+                return;
+            }
+
+            if (!current.hasModifications() && previous.hasModifications()) {
+                // Left all modifications
+                MessageRenderer.send(player, Translation.getString("Message.Skill.Beacon.Zone.Leave", player));
+            } else if (current.hasModifications()) {
+                // Entered or changed zone - build multi-line message
+                List<String> lines = new ArrayList<>();
+                lines.add(Translation.getString("Message.Skill.Beacon.Zone.Enter", player));
+
+                if (current.deny) {
+                    lines.add(Translation.getString("Message.Skill.Beacon.Zone.Deny", player));
+                }
+                if (current.selfDeny) {
+                    lines.add(Translation.getString("Message.Skill.Beacon.Zone.SelfDeny", player));
+                }
+                if (current.shareDeny) {
+                    lines.add(Translation.getString("Message.Skill.Beacon.Zone.ShareDeny", player));
+                }
+                if (current.rangeMult < 1.0) {
+                    lines.add(Util.formatText(
+                        Translation.getString("Message.Skill.Beacon.Zone.RangeReduced", player),
+                        (int)(current.rangeMult * 100)));
+                } else if (current.rangeMult > 1.0) {
+                    lines.add(Util.formatText(
+                        Translation.getString("Message.Skill.Beacon.Zone.RangeIncreased", player),
+                        (int)(current.rangeMult * 100)));
+                }
+                if (current.durationMult < 1.0) {
+                    lines.add(Util.formatText(
+                        Translation.getString("Message.Skill.Beacon.Zone.DurationReduced", player),
+                        (int)(current.durationMult * 100)));
+                } else if (current.durationMult > 1.0) {
+                    lines.add(Util.formatText(
+                        Translation.getString("Message.Skill.Beacon.Zone.DurationIncreased", player),
+                        (int)(current.durationMult * 100)));
+                }
+                if (current.amplifierMod < 0) {
+                    lines.add(Util.formatText(
+                        Translation.getString("Message.Skill.Beacon.Zone.AmplifierReduced", player),
+                        Math.abs(current.amplifierMod)));
+                } else if (current.amplifierMod > 0) {
+                    lines.add(Util.formatText(
+                        Translation.getString("Message.Skill.Beacon.Zone.AmplifierIncreased", player),
+                        current.amplifierMod));
+                }
+
+                for (String line : lines) {
+                    MessageRenderer.send(player, line);
+                }
+            }
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void on(final PlayerDeathEvent event) {
+        if (WorldGroup.getGroupByWorld(event.getEntity().getWorld()).isDisabled()) {
+            return;
+        }
+        if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getEntity())) {
+            MyPetPlayer myPetPlayer = MyPetApi.getPlayerManager().getMyPetPlayer(event.getEntity());
+            if (myPetPlayer.hasMyPet()) {
+                final MyPet myPet = myPetPlayer.getMyPet();
+                if (myPet.getStatus() == MyPet.PetState.Here && Configuration.Skilltree.Skill.Backpack.DROP_WHEN_OWNER_DIES) {
+                    if (myPet.getSkills().isActive(BackpackImpl.class)) {
+                        CustomInventory inv = myPet.getSkills().get(BackpackImpl.class).getInventory();
+                        inv.dropContentAt(myPet.getLocation().get());
+                    }
+                }
+                myPet.removePet();
+            }
+        }
+    }
+
+    @EventHandler
+    public void on(final PlayerRespawnEvent event) {
+        if (WorldGroup.getGroupByWorld(event.getPlayer().getWorld()).isDisabled()) {
+            return;
+        }
+        if (MyPetApi.getPlayerManager().isMyPetPlayer(event.getPlayer())) {
+            final MyPetPlayer respawnedMyPetPlayer = MyPetApi.getPlayerManager().getMyPetPlayer(event.getPlayer());
+            final MyPet myPet = respawnedMyPetPlayer.getMyPet();
+
+            if (respawnedMyPetPlayer.hasMyPet() && myPet.wantsToRespawn()) {
+                new CompatRunnable(respawnedMyPetPlayer.getPlayer()) {
+                    public void run() {
+                        if (respawnedMyPetPlayer.hasMyPet()) {
+                            MyPet runMyPet = respawnedMyPetPlayer.getMyPet();
+                            switch (runMyPet.createEntity()) {
+                                case Canceled:
+                                    respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Prevent", respawnedMyPetPlayer), runMyPet.getPetName()));
+                                    break;
+                                case NoSpace:
+                                    respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.NoSpace", respawnedMyPetPlayer), runMyPet.getPetName()));
+                                    break;
+                                case NotAllowed:
+                                    respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.No.AllowedHere", respawnedMyPetPlayer), runMyPet.getPetName()));
+                                    break;
+                                case Dead:
+                                    if (runMyPet != myPet) {
+                                        if (Configuration.Respawn.DISABLE_AUTO_RESPAWN) {
+                                            respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Call.Dead", respawnedMyPetPlayer), myPet.getPetName()));
+                                        } else {
+                                            respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Call.Dead.Respawn", respawnedMyPetPlayer), runMyPet.getPetName(), runMyPet.getRespawnTime()));
+                                        }
+                                    }
+                                    break;
+                                case Flying:
+                                    respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Spawn.Flying", respawnedMyPetPlayer), runMyPet.getPetName()));
+                                    break;
+                                case Success:
+                                    if (runMyPet != myPet) {
+                                        respawnedMyPetPlayer.sendMessage(Util.formatText(Translation.getString("Message.Command.Call.Success", respawnedMyPetPlayer), runMyPet.getPetName()));
+                                    }
+                                    break;
+                            }
+                        }
+                    }
+                }.runTaskLater(MyPetApi.getPlugin(), 25L);
+            }
+        }
+    }
+
+}

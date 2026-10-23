@@ -1,0 +1,130 @@
+/*
+ * This file is part of MyPet
+ *
+ * Copyright © 2011-2019 Keyle
+ * MyPet is licensed under the GNU Lesser General Public License.
+ *
+ * MyPet is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyPet is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package de.Keyle.MyPet.gui.selectionmenu;
+
+import de.Keyle.MyPet.MyPetApi;
+import de.Keyle.MyPet.api.Configuration;
+import de.Keyle.MyPet.api.WorldGroup;
+import de.Keyle.MyPet.api.entity.StoredMyPet;
+import de.Keyle.MyPet.api.gui.IconMenu;
+import de.Keyle.MyPet.api.gui.IconMenuItem;
+import de.Keyle.MyPet.api.player.MyPetPlayer;
+import de.Keyle.MyPet.api.repository.RepositoryCallback;
+import de.Keyle.MyPet.api.util.Colorizer;
+import de.Keyle.MyPet.api.util.locale.Translation;
+import de.Keyle.MyPet.api.util.service.types.EggIconService;
+import de.Keyle.MyPet.util.translation.PetDefaultNameResolver;
+import de.keyle.knbt.TagCompound;
+import de.keyle.knbt.TagInt;
+
+import java.util.*;
+
+
+public class MyPetSelectionGui {
+
+    private final MyPetPlayer player;
+    private final String title;
+    private final int page;
+
+    public MyPetSelectionGui(MyPetPlayer player, String title) {
+        this.player = player;
+        this.title = title;
+        this.page = 1;
+    }
+
+    public MyPetSelectionGui(MyPetPlayer player, String title, int page) {
+        this.player = player;
+        this.title = title;
+        this.page = page;
+    }
+
+    public void open(List<StoredMyPet> pets, final RepositoryCallback<StoredMyPet> callback) {
+        List<StoredMyPet> pagedPets;
+        // restrict the number of pets to 54 per page
+        int startIndex = (page - 1) * 54;
+        int endIndex = Math.min(startIndex + 54, pets.size());
+        if (startIndex < pets.size()) {
+            pagedPets = pets.subList(startIndex, endIndex);
+        } else {
+            pagedPets = pets.subList(0, Math.min(54, pets.size()));
+        }
+
+
+        final Map<Integer, StoredMyPet> petSlotList = new HashMap<>();
+        WorldGroup wg = WorldGroup.getGroupByWorld(player.getPlayer().getWorld().getName());
+
+        IconMenu menu = new IconMenu(title, event -> {
+            if (petSlotList.containsKey(event.getPosition())) {
+                StoredMyPet storedMyPet = petSlotList.get(event.getPosition());
+                if (storedMyPet != null && callback != null) {
+                    callback.callback(storedMyPet);
+                }
+            }
+
+            event.setWillClose(true);
+            event.setWillDestroy(true);
+        }, MyPetApi.getPlugin()).setPaginationIdentifier("SelectMyPet");
+
+        int nextPosition = 0;
+
+        for (StoredMyPet currentPet : pagedPets) {
+            if (currentPet.getWorldGroup().isEmpty() || !currentPet.getWorldGroup().equals(wg.getName()))
+                continue;
+
+            if (player.hasMyPet() && player.getMyPet().getUUID().equals(currentPet.getUUID()))
+                continue;
+
+            List<String> lore = new ArrayList<>();
+
+            if (Configuration.HungerSystem.USE_HUNGER_SYSTEM)
+                lore.add("<reset>" + Translation.getString("Name.Hunger", player) + ": " + "<gold>" + Math.round(currentPet.getSaturation()));
+
+            if (currentPet.getRespawnTime() > 0) {
+                lore.add("<reset>" + Translation.getString("Name.Respawntime", player) + ": " + "<gold>" + currentPet.getRespawnTime() + "sec");
+            } else {
+                lore.add("<reset>" + Translation.getString("Name.HP", player) + ": " + "<gold>" + String.format("%1.2f", currentPet.getHealth()));
+            }
+
+            boolean levelFound = currentPet.hasStoredLevel();
+            if (levelFound) {
+                lore.add("<reset>" + Translation.getString("Name.Level", player) + ": " + "<gold>" + currentPet.getStoredLevel());
+            }
+
+            if (!levelFound)
+                lore.add("<reset>" + Translation.getString("Name.Exp", player) + ": " + "<gold>" + String.format("%1.2f", currentPet.getExp()));
+
+            lore.add("<reset>" + Translation.getString("Name.Type", player) + ": " + "<gold>" + PetDefaultNameResolver.resolve(currentPet.getPetType(), player));
+            lore.add("<reset>" + Translation.getString("Name.Skilltree", player) + ": " + "<gold>" + Colorizer.setColors(currentPet.getSkilltree() != null ? currentPet.getSkilltree().getDisplayName() : "-"));
+
+            IconMenuItem icon = new IconMenuItem();
+            icon.setTitle("<reset>" + currentPet.getPetName());
+            icon.addLore(lore);
+            Optional<EggIconService> egg = MyPetApi.getServiceManager().getService(EggIconService.class);
+            egg.ifPresent(service -> service.updateIcon(currentPet.getPetType(), icon));
+
+            int currentPosition = nextPosition++;
+
+            menu.setOption(currentPosition, icon);
+            petSlotList.put(currentPosition, currentPet);
+        }
+        menu.open(player.getPlayer());
+    }
+}

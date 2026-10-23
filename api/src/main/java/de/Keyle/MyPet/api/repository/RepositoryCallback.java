@@ -1,0 +1,117 @@
+/*
+ * This file is part of MyPet
+ *
+ * Copyright © 2011-2019 Keyle
+ * MyPet is licensed under the GNU Lesser General Public License.
+ *
+ * MyPet is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyPet is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package de.Keyle.MyPet.api.repository;
+
+import de.Keyle.MyPet.MyPetApi;
+import org.bukkit.plugin.Plugin;
+import de.Keyle.MyPet.api.util.CompatRunnable;
+import org.bukkit.scheduler.BukkitTask;
+
+public abstract class RepositoryCallback<T> extends CompatRunnable {
+    T value;
+
+    public void setValue(T value) {
+        this.value = value;
+    }
+
+    private synchronized BukkitTask scheduleOnce(java.util.function.Supplier<BukkitTask> scheduler) {
+        try {
+            return scheduler.get();
+        } catch (IllegalStateException alreadyScheduled) {
+            // This one-shot callback was already scheduled (e.g. the async repository task fired more
+            // than once with the same instance). The pending run still delivers the callback, so
+            // swallow the duplicate "Already scheduled" instead of throwing.
+            return null;
+        }
+    }
+
+    @Override
+    public void run() {
+        callback(value);
+    }
+
+    public abstract void callback(T value);
+
+    public void run(T value) {
+        setValue(value);
+        callback(value);
+    }
+
+    public synchronized BukkitTask runTask(Plugin plugin, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTask(plugin));
+    }
+
+    public synchronized BukkitTask runTaskAsynchronously(Plugin plugin, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskAsynchronously(plugin));
+    }
+
+    public synchronized BukkitTask runTaskLater(Plugin plugin, long delay, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskLater(plugin, delay));
+    }
+
+    public synchronized BukkitTask runTaskLaterAsynchronously(Plugin plugin, long delay, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskLaterAsynchronously(plugin, delay));
+    }
+
+    public synchronized BukkitTask runTaskTimer(Plugin plugin, long delay, long period, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskTimer(plugin, delay, period));
+    }
+
+    public synchronized BukkitTask runTaskTimerAsynchronously(Plugin plugin, long delay, long period, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskTimerAsynchronously(plugin, delay, period));
+    }
+
+    public synchronized BukkitTask runTask(T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTask(MyPetApi.getPlugin()));
+    }
+
+    public synchronized BukkitTask runTaskAsynchronously(T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskAsynchronously(MyPetApi.getPlugin()));
+    }
+
+    public synchronized BukkitTask runTaskLater(long delay, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskLater(MyPetApi.getPlugin(), delay));
+    }
+
+    public synchronized BukkitTask runTaskLaterAsynchronously(long delay, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskLaterAsynchronously(MyPetApi.getPlugin(), delay));
+    }
+
+    public synchronized BukkitTask runTaskTimer(long delay, long period, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskTimer(MyPetApi.getPlugin(), delay, period));
+    }
+
+    public synchronized BukkitTask runTaskTimerAsynchronously(long delay, long period, T value) throws IllegalArgumentException, IllegalStateException {
+        this.setValue(value);
+        return scheduleOnce(() -> super.runTaskTimerAsynchronously(MyPetApi.getPlugin(), delay, period));
+    }
+}

@@ -1,0 +1,10 @@
+This product bundles the following third-party libraries. Full licence texts are in licences/.
+
+  Gson (com.google.code.gson)            Apache License 2.0   licences/Gson.txt
+  KNBT (de.keyle:knbt)                   GNU LGPL 3.0         licences/KNBT.txt
+  bStats (org.bstats:bstats-bukkit)      MIT License          licences/bStats.txt
+  HikariCP (com.zaxxer:HikariCP)         Apache License 2.0   licences/HikariCP.txt
+  MongoDB Java driver (org.mongodb)      Apache License 2.0   licences/MongoDB.txt
+  Sentry Java SDK (io.sentry)            MIT License          licences/Sentry.txt
+
+The plugin itself is licensed under the GNU Lesser General Public License 3.0, see LICENSE.

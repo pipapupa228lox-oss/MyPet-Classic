@@ -1,0 +1,124 @@
+/*
+ * This file is part of MyPet
+ *
+ * Copyright © 2011-2019 Keyle
+ * MyPet is licensed under the GNU Lesser General Public License.
+ *
+ * MyPet is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyPet is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package de.Keyle.MyPet.commands.admin;
+
+import de.Keyle.MyPet.MyPetApi;
+import de.Keyle.MyPet.api.Util;
+import de.Keyle.MyPet.api.commands.CommandCategory;
+import de.Keyle.MyPet.api.commands.CommandOptionTabCompleter;
+import de.Keyle.MyPet.api.entity.MyPet;
+import de.Keyle.MyPet.api.event.MyPetSelectSkilltreeEvent;
+import de.Keyle.MyPet.api.skill.skilltree.Skilltree;
+import de.Keyle.MyPet.api.util.Colorizer;
+import de.Keyle.MyPet.api.util.locale.Translation;
+import org.bukkit.Bukkit;
+
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import de.Keyle.MyPet.api.util.message.MessageRenderer;
+
+public class CommandOptionSkilltree implements CommandOptionTabCompleter {
+    @Override
+    public boolean onCommandOption(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            MessageRenderer.send(sender, Translation.getString("Message.Command.Help.MissingParameter", sender));
+            MessageRenderer.send(sender, " -> " + "<dark_aqua>" + "/petadmin skilltree " + "<red>" + "<a player name> " + "<red>" + "<new skilltree>");
+            return false;
+        }
+        if (args.length == 1) {
+            MessageRenderer.send(sender, Translation.getString("Message.Command.Help.MissingParameter", sender));
+            MessageRenderer.send(sender, " -> " + "<dark_aqua>" + "/petadmin skilltree " + args[0] + " " + "<red>" + "<new skilltree>");
+            return false;
+        }
+
+        String lang = MyPetApi.getPlatformHelper().getCommandSenderLanguage(sender);
+        Player petOwner = Bukkit.getServer().getPlayer(args[0]);
+
+        if (petOwner == null || !petOwner.isOnline()) {
+            MessageRenderer.send(sender, "[" + "<aqua>" + "MyPet" + "<reset>" + "] " + Translation.getString("Message.No.PlayerOnline", lang));
+            return true;
+        } else if (!MyPetApi.getMyPetManager().hasActiveMyPet(petOwner)) {
+            MessageRenderer.send(sender, "[" + "<aqua>" + "MyPet" + "<reset>" + "] " + Util.formatText(Translation.getString("Message.No.UserHavePet", lang), petOwner.getName()));
+            return true;
+        }
+        MyPet myPet = MyPetApi.getMyPetManager().getMyPet(petOwner);
+
+        if (MyPetApi.getSkilltreeManager().hasSkilltree(args[1])) {
+            Skilltree skilltree = MyPetApi.getSkilltreeManager().getSkilltree(args[1]);
+            if (skilltree.getMobTypes().contains(myPet.getPetType()) && myPet.setSkilltree(skilltree, MyPetSelectSkilltreeEvent.Source.AdminCommand)) {
+                MessageRenderer.send(sender, "[" + "<aqua>" + "MyPet" + "<reset>" + "] " + Util.formatText(Translation.getString("Message.Skilltree.SwitchedToFor", lang), petOwner.getName(), Colorizer.setColors(skilltree.getDisplayName())));
+            } else {
+                MessageRenderer.send(sender, "[" + "<aqua>" + "MyPet" + "<reset>" + "] " + Translation.getString("Message.Skilltree.NotSwitched", lang));
+            }
+        } else {
+            MessageRenderer.send(sender, "[" + "<aqua>" + "MyPet" + "<reset>" + "] " + Util.formatText(Translation.getString("Message.Command.Skilltree.CantFindSkilltree", lang), args[1]));
+        }
+        return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender commandSender, String[] strings) {
+        if (strings.length == 2) {
+            return null;
+        }
+        if (strings.length == 3) {
+            Player player = Bukkit.getServer().getPlayer(strings[1]);
+            if (player == null || !player.isOnline()) {
+                return Collections.emptyList();
+            }
+            if (MyPetApi.getMyPetManager().hasActiveMyPet(player)) {
+                MyPet myPet = MyPetApi.getMyPetManager().getMyPet(player);
+                List<String> skilltreeList = new ArrayList<>();
+                for (Skilltree skilltree : MyPetApi.getSkilltreeManager().getSkilltrees()) {
+                    if (skilltree.getMobTypes().contains(myPet.getPetType())) {
+                        skilltreeList.add(skilltree.getName());
+                    }
+                }
+                return filterTabCompletionResults(skilltreeList, strings[2]);
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    @Override
+    public String getHelpCommand() {
+        return "/petadmin skilltree";
+    }
+
+    @Override
+    public CommandCategory getHelpCategory() {
+        return CommandCategory.ADMIN;
+    }
+
+    @Override
+    public String getHelpDescription() {
+        return "Changes a pet's skilltree";
+    }
+
+    @Override
+    public int getHelpOrder() {
+        return 32;
+    }
+}

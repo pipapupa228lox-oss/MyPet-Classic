@@ -1,0 +1,114 @@
+// Create a project-level configuration for SpecialSource
+configurations {
+    create('specialSourceTool') {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+dependencies {
+    specialSourceTool 'net.md-5:SpecialSource:1.11.6:shaded'
+}
+
+// Spigot server code remapping: https://www.spigotmc.org/threads/spigot-bungeecord-1-17-1-17-1.510208/
+// These dependencies and mappings are installed into the local Maven repository when BuildTools builds the Spigot dependencies.
+def gradleCache = new File(System.getProperty("user.home"), '.gradle/caches/modules-2/files-2.1')
+def mavenLocalRepo = new File(System.getProperty("user.home"), '.m2/repository')
+def findInCache = { group, module, version, fileName ->
+    // First, try Gradle cache
+    def gradleBaseDir = new File(gradleCache, "${group}/${module}/${version}")
+    if (gradleBaseDir.exists()) {
+        def result = gradleBaseDir.listFiles()?.findAll { it.isDirectory() }?.collectMany({ it.listFiles().flatten() })?.find { it.name == fileName }?.path
+        if (result != null) {
+            return result
+        }
+    }
+
+    // Fallback to Maven local repository
+    def groupPath = group.replace('.', '/')
+    def mavenBaseDir = new File(mavenLocalRepo, "${groupPath}/${module}/${version}")
+    if (mavenBaseDir.exists()) {
+        def mavenFile = new File(mavenBaseDir, fileName)
+        if (mavenFile.exists()) {
+            return mavenFile.path
+        }
+    }
+
+    throw new Exception("Failed to resolve ${fileName} for ${group}:${module}:${version}. Checked Gradle cache (${gradleBaseDir}) and Maven local (${mavenBaseDir}). Run BuildTools to install the required Spigot artifacts.");
+}
+
+// Resolve SpecialSource from the project-level configuration
+def specialSourceFile = configurations.specialSourceTool.resolve().find { it.name.contains('SpecialSource') }
+def specialSource = specialSourceFile.path
+
+// Helper to run Java commands (Gradle 9 compatible - uses ProcessBuilder instead of deprecated project.exec)
+def runJavaCommand = { List<String> args ->
+    def process = new ProcessBuilder(args).inheritIO().start()
+    def exitCode = process.waitFor()
+    if (exitCode != 0) {
+        throw new GradleException("Command failed with exit code ${exitCode}: ${args.join(' ')}")
+    }
+}
+
+// Converts from Mojang's mappings to Minecraft's obfuscated mappings.
+def remapMojangToObfuscated = { inputFile, outputFile, craftbukkitVersion ->
+    def remappedMojang = findInCache("org.spigotmc", "spigot", craftbukkitVersion, "spigot-${craftbukkitVersion}-remapped-mojang.jar")
+    def mojangMappings = findInCache("org.spigotmc", "minecraft-server", craftbukkitVersion, "minecraft-server-${craftbukkitVersion}-maps-mojang.txt")
+
+    println '> remapMojangToObfuscated'
+    println '  Input: ' + inputFile.path
+    println '  Output: ' + outputFile.path
+    println '  CraftBukkit version: ' + craftbukkitVersion
+    def classpathSeparator = System.properties['path.separator']
+    def classpath = "${specialSource}${classpathSeparator}${remappedMojang}".replace('{craftbukkitVersion}', craftbukkitVersion)
+
+    runJavaCommand([
+        'java',
+        '-cp', classpath,
+        'net.md_5.specialsource.SpecialSource',
+        '--live',
+        '-i', inputFile.path,
+        '-o', outputFile.path,
+        '-m', mojangMappings,
+        '--reverse'
+    ])
+}
+
+// Converts from Minecraft's obfuscated mappings to Spigot's mappings.
+def remapObfuscatedToSpigot = { inputFile, outputFile, craftbukkitVersion ->
+    def spigotMappings = findInCache("org.spigotmc", "minecraft-server", craftbukkitVersion, "minecraft-server-${craftbukkitVersion}-maps-spigot.csrg")
+    def remappedObf = findInCache("org.spigotmc", "spigot", craftbukkitVersion, "spigot-${craftbukkitVersion}-remapped-obf.jar")
+
+    println '> remapObfuscatedToSpigot'
+    println '  Input: ' + inputFile.path
+    println '  Output: ' + outputFile.path
+    println '  CraftBukkit version: ' + craftbukkitVersion
+    def classpathSeparator = System.properties['path.separator']
+    def classpath = "${specialSource}${classpathSeparator}${remappedObf}".replace('{craftbukkitVersion}', craftbukkitVersion)
+
+    runJavaCommand([
+        'java',
+        '-cp', classpath,
+        'net.md_5.specialsource.SpecialSource',
+        '--live',
+        '-i', inputFile.path,
+        '-o', outputFile.path,
+        '-m', spigotMappings
+    ])
+}
+
+// Converts from Mojang's mappings to Spigot's mappings.
+def remapMojangToSpigot = { inputFile, intermediateFile, outputFile, craftbukkitVersion ->
+    println '> remapMojangToSpigot'
+    println '  Input: ' + inputFile.path
+    println '  Intermediate: ' + intermediateFile.path
+    println '  Output: ' + outputFile.path
+    println '  CraftBukkit version: ' + craftbukkitVersion
+    remapMojangToObfuscated(inputFile, intermediateFile, craftbukkitVersion)
+    remapObfuscatedToSpigot(intermediateFile, outputFile, craftbukkitVersion)
+}
+
+// Export functions for use by subprojects
+ext.remapMojangToObfuscated = remapMojangToObfuscated
+ext.remapObfuscatedToSpigot = remapObfuscatedToSpigot
+ext.remapMojangToSpigot = remapMojangToSpigot

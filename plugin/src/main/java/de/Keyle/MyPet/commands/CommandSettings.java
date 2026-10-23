@@ -1,0 +1,102 @@
+/*
+ * This file is part of MyPet
+ *
+ * Copyright © 2011-2019 Keyle
+ * MyPet is licensed under the GNU Lesser General Public License.
+ *
+ * MyPet is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyPet is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package de.Keyle.MyPet.commands;
+
+import de.Keyle.MyPet.api.commands.CommandOption;
+import de.Keyle.MyPet.api.commands.CommandOptionTabCompleter;
+import de.Keyle.MyPet.api.commands.CommandTabCompleter;
+import de.Keyle.MyPet.api.util.locale.Translation;
+import de.Keyle.MyPet.commands.settings.CommandSettingHealthbar;
+import de.Keyle.MyPet.commands.settings.CommandSettingsPetLivingSound;
+
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+import java.util.*;
+import de.Keyle.MyPet.api.util.message.MessageRenderer;
+
+public class CommandSettings implements CommandTabCompleter {
+
+    private final List<String> optionsList;
+    private final Map<String, CommandOption> commandOptions = new HashMap<>();
+
+    {
+        commandOptions.put("healthbar", new CommandSettingHealthbar());
+        commandOptions.put("idle-volume", new CommandSettingsPetLivingSound());
+
+        optionsList = new ArrayList<>(commandOptions.keySet());
+        Collections.sort(optionsList);
+    }
+
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length < 1) {
+            MessageRenderer.send(sender, Translation.getString("Message.Command.Help.MissingParameter", sender));
+            MessageRenderer.send(sender, " -> " + "<dark_aqua>" + String.join("<reset>" + ", " + "<dark_aqua>", commandOptions.keySet()));
+            return false;
+        }
+
+        String[] parameter = Arrays.copyOfRange(args, 1, args.length);
+        CommandOption option = commandOptions.get(args[0].toLowerCase());
+
+        if (option != null) {
+            return option.onCommandOption(sender, parameter);
+        }
+        return false;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String s, String[] strings) {
+        if (sender instanceof Player) {
+            if (strings.length == 1) {
+                return filterTabCompletionResults(optionsList, strings[0]);
+            } else if (strings.length >= 1) {
+                CommandOption co = commandOptions.get(strings[0]);
+                if (co != null) {
+                    if (co instanceof CommandOptionTabCompleter) {
+                        return ((CommandOptionTabCompleter) co).onTabComplete(sender, strings);
+                    }
+                }
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    @Override
+    public String getHelpTranslationKey() {
+        return "Message.Command.Help.Options";
+    }
+
+    @Override
+    public String getHelpCommand() {
+        return "/petoptions";
+    }
+
+    @Override
+    public boolean isVisibleTo(Player player) {
+        return true;
+    }
+
+    @Override
+    public int getHelpOrder() {
+        return 40;
+    }
+}

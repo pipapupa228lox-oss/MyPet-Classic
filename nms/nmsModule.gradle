@@ -1,0 +1,12 @@
+ext {
+    // This needs to be defined by projects that apply this script.
+    craftbukkitVersion = 'UNSPECIFIED'
+}
+
+dependencies {
+    compileOnly(project(':api'))
+    compileOnly(project(':skills'))
+
+    compileOnly("org.jetbrains:annotations:13.0")
+    compileOnly("de.keyle:knbt:0.0.6")
+}
