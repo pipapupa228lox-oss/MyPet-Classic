@@ -9,7 +9,7 @@ dependencies {
     compileOnly("com.google.code.gson:gson:2.8.9")
     compileOnly("de.keyle:knbt:0.0.6")
     compileOnly("org.jetbrains:annotations:16.0.2")
-    compileOnly("net.kyori:adventure-api:4.17.0")
+    compileOnly("net.kyori:adventure-api:5.2.0")
 
     compileOnly(project(":api"))
 }
