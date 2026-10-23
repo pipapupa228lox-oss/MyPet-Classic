@@ -92,7 +92,7 @@ dependencies {
     compileOnly("com.sucy.skill:SkillAPI:3.108")
     compileOnly("com.nisovin.magicspells:MagicSpells:3.4.2")
     compileOnly("net.dmulloy2:ProtocolLib:5.3.0")
-    compileOnly("me.clip:placeholderapi:2.9.2")
+    compileOnly("me.clip:placeholderapi:2.12.3")
     compileOnly("fr.neatmonster:nocheatplus:3.16.0")
     compileOnly("de.myzelyam:supervanish:6.1.0")
     compileOnly("net.sacredlabyrinth.Phaed:PreciousStones:10.7.2")
