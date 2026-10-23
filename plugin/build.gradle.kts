@@ -106,7 +106,7 @@ dependencies {
     compileOnly("de.keyle:mypet-premium-apis:1.0-SNAPSHOT")
 
     compileOnly("org.bstats:bstats-bukkit:3.1.0")
-    compileOnly("org.mongodb:mongodb-driver:3.12.11")
+    compileOnly("org.mongodb:mongodb-driver:3.12.14")
     compileOnly("de.keyle:knbt:0.0.6")
 
     compileOnly("io.sentry:sentry:8.22.0")

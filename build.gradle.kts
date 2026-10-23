@@ -198,7 +198,7 @@ dependencies {
     // External libs to be shaded
 
     add("shade", "org.bstats:bstats-bukkit:3.1.0")
-    add("shade", "org.mongodb:mongodb-driver:3.12.11")
+    add("shade", "org.mongodb:mongodb-driver:3.12.14")
     add("shade", "de.keyle:knbt:0.0.6")
     add("shade", "com.google.code.gson:gson:2.8.9")
     add("shade", "io.sentry:sentry:8.22.0")
