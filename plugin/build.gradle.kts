@@ -54,10 +54,10 @@ dependencies {
 
     // PlotSquared V6+ (note: 6.11.2 has broken Maven deployment, use 6.11.1)
     // These require Java 17+ but we only use them for compile-time type checking
-    compileOnly("com.plotsquared:PlotSquared-Core:6.11.1") {
+    compileOnly("com.plotsquared:PlotSquared-Core:6.11.2") {
         isTransitive = false
     }
-    compileOnly("com.plotsquared:PlotSquared-Bukkit:6.11.1") {
+    compileOnly("com.plotsquared:PlotSquared-Bukkit:6.11.2") {
         isTransitive = false
     }
 
